@@ -1,0 +1,96 @@
+import inspect
+from typing import Iterable
+
+import pydantic
+
+from bagel import models
+from bagel.logger import log_error, logger
+from bagel.mappings import NB
+from bagel.utilities import pheno_utils
+
+
+def generate_context(config: str) -> dict:
+    # Adapted from the dandi-schema context generation function
+    # https://github.com/dandi/dandi-schema/blob/c616d87eaae8869770df0cb5405c24afdb9db096/dandischema/metadata.py
+    field_preamble = pheno_utils.get_supported_namespaces_for_config(config)
+    fields: dict[str, str | dict[str, str]] = {}
+    for klass_name, klass in inspect.getmembers(models):
+        if inspect.isclass(klass) and issubclass(klass, pydantic.BaseModel):
+            fields[klass_name] = f"{NB.pf}:{klass_name}"
+            # `issubclass` ensures `klass` is a BaseModel at runtime, but mypy cannot infer this here
+            for name, field in klass.model_fields.items():  # type: ignore[attr-defined]
+                if name == "schemaKey":
+                    fields[name] = "@type"
+                elif name == "identifier":
+                    fields[name] = "@id"
+                elif name not in fields:
+                    fields[name] = {"@id": f"{NB.pf}:{name}"}
+
+    field_preamble.update(**fields)
+
+    return {"@context": field_preamble}
+
+
+# TODO: Now that we only have one command that generates a JSONLD, can move this into the main 'create' command function
+def dataset_to_jsonld(context: dict, dataset: models.Dataset) -> dict:
+    """Add the Neurobagel context to a graph-ready dataset to form a JSONLD dictionary."""
+    # We can't just exclude_unset here because the identifier and schemaKey
+    # for each instance are created as default values and so technically are never set
+    # TODO: we should revisit this because there may be reasons to have None be meaningful in the future
+    return {**context, **dataset.model_dump(exclude_none=True, mode="json")}
+
+
+def get_subs_missing_from_pheno_data(
+    subjects: Iterable, pheno_subjects: Iterable
+) -> list:
+    """Check a list of subject IDs and return any not found in the provided phenotypic subject list."""
+    return list(set(subjects).difference(pheno_subjects))
+
+
+def confirm_subs_match_pheno_data(
+    subjects: Iterable, subject_source_for_err: str, pheno_subjects: Iterable
+):
+    """
+    Return an error if not all subjects in the subject list are found in the provided phenotypic subject list.
+    """
+    missing_subs = get_subs_missing_from_pheno_data(
+        subjects=subjects,
+        pheno_subjects=pheno_subjects,
+    )
+
+    if len(missing_subs) > 0:
+        log_error(
+            logger,
+            f"The {subject_source_for_err} contains subject IDs not found in "
+            "the provided JSON-LD file:\n"
+            f"{missing_subs}\n"
+            "Subject IDs are case sensitive. "
+            f"Please check that the {subject_source_for_err} corresponds to the dataset in the .jsonld file.",
+        )
+
+
+def get_subject_instances(
+    dataset: models.Dataset,
+) -> dict[str, models.Subject]:
+    """
+    Return a dictionary of subjects for a given Neurobagel dataset from JSONLD data,
+    where keys are subject labels and values are the subject objects.
+    """
+    return {
+        subject.hasLabel: subject for subject in getattr(dataset, "hasSamples")
+    }
+
+
+def get_imaging_session_instances(
+    jsonld_subject: models.Subject,
+) -> dict[str, models.ImagingSession]:
+    """
+    Return a dictionary of imaging sessions for a given subject from JSONLD data,
+    where the keys are the session labels and values are the session objects.
+    """
+    jsonld_sub_sessions_dict = {}
+    for jsonld_sub_ses in getattr(jsonld_subject, "hasSession"):
+        if jsonld_sub_ses.schemaKey == "ImagingSession":
+            jsonld_sub_sessions_dict[jsonld_sub_ses.hasLabel] = jsonld_sub_ses
+
+    return jsonld_sub_sessions_dict
