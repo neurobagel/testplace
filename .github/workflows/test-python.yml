@@ -1,0 +1,61 @@
+name: test python (reusable)
+
+# Tests one Python package on the shared Python matrix, with its own locked dependencies.
+on:
+  workflow_call:
+    inputs:
+      package:
+        description: Folder under packages/
+        required: true
+        type: string
+      pytest-args:
+        description: Test selection (service-dependent tests are deselected here)
+        required: false
+        type: string
+        default: ""
+      submodules:
+        description: Check out the submodules (bagel-cli)
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Shared matrix for all Python packages (see migration/PLAN.md, Decisions).
+        python-version: ["3.12", "3.13"]
+    defaults:
+      run:
+        working-directory: packages/${{ inputs.package }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # full history: hatch-vcs reads the package version from its tags
+          fetch-depth: 0
+          submodules: ${{ inputs.submodules }}
+          persist-credentials: false
+
+      - name: Set up Python ${{ matrix.python-version }} with uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies (locked)
+        run: uv sync --python ${{ matrix.python-version }} --group dev
+
+      - name: Test with pytest
+        run: uv run --python ${{ matrix.python-version }} pytest ${{ inputs.pytest-args }} --cov --cov-branch --cov-report=xml
+
+      - name: Upload results to Codecov
+        uses: codecov/codecov-action@v7
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: ${{ inputs.package }}
+          files: packages/${{ inputs.package }}/coverage.xml

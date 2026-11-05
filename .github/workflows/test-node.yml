@@ -1,0 +1,226 @@
+name: test node (reusable)
+
+# Checks and tests one frontend package, as its upstream CI did.
+on:
+  workflow_call:
+    inputs:
+      package:
+        description: Folder under packages/
+        required: true
+        type: string
+      typecheck:
+        description: Run `npm run typecheck`
+        required: false
+        type: boolean
+        default: false
+      unit:
+        description: Run `npm run test:unit` (vitest)
+        required: false
+        type: boolean
+        default: false
+      component-env:
+        description: Contents of .env for the component tests (empty = no .env)
+        required: false
+        type: string
+        default: ""
+      e2e-env:
+        description: Contents of .env for the e2e tests (empty = no .env)
+        required: false
+        type: string
+        default: ""
+      coverage:
+        description: Collect and merge e2e, component and unit coverage, upload to Codecov
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "20"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/${{ inputs.package }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Install dependencies
+        run: npm ci
+      - name: Run TSC
+        if: inputs.typecheck
+        run: npm run typecheck
+      - name: Run ESLint
+        run: npm run lint:check
+      - name: Run Prettier check
+        run: npm run format:check
+
+  unit:
+    if: inputs.unit
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/${{ inputs.package }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Install dependencies
+        run: npm ci
+      - name: Run unit tests
+        run: npm run test:unit
+      - name: Upload unit coverage artifact
+        if: inputs.coverage
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: unitCov
+          path: packages/${{ inputs.package }}/coverage
+
+  component:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/${{ inputs.package }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Create .env file
+        if: inputs.component-env != ''
+        env:
+          ENV_CONTENT: ${{ inputs.component-env }}
+        run: printf '%s\n' "$ENV_CONTENT" > .env
+      - name: Build
+        run: |
+          npm ci
+          npm run build
+      - name: Run component tests
+        uses: cypress-io/github-action@v7
+        with:
+          working-directory: packages/${{ inputs.package }}
+          install: false
+          component: true
+      - name: Upload component coverage artifact
+        if: inputs.coverage
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: compCov
+          path: packages/${{ inputs.package }}/coverage
+
+  e2e:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/${{ inputs.package }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Create .env file
+        if: inputs.e2e-env != ''
+        env:
+          ENV_CONTENT: ${{ inputs.e2e-env }}
+        run: printf '%s\n' "$ENV_CONTENT" > .env
+      - name: Build
+        run: |
+          npm ci
+          npm run build
+      - name: Run end to end tests
+        uses: cypress-io/github-action@v7
+        with:
+          working-directory: packages/${{ inputs.package }}
+          install: false
+          start: npm run preview
+          wait-on: http://localhost:5173
+          component: false
+      - name: Upload e2e screenshots on failure
+        if: failure()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: e2e-screenshots
+          path: packages/${{ inputs.package }}/cypress/screenshots
+          retention-days: 30
+      - name: Upload e2e coverage artifact
+        if: inputs.coverage
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: e2eCov
+          path: packages/${{ inputs.package }}/coverage
+
+  merge-coverage:
+    if: inputs.coverage
+    needs: [e2e, component, unit]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/${{ inputs.package }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Setup
+        run: npm ci
+      - name: Download e2e coverage artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: e2eCov
+          path: packages/${{ inputs.package }}/e2eCov
+      - name: Download component coverage artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: compCov
+          path: packages/${{ inputs.package }}/compCov
+      - name: Download unit coverage artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: unitCov
+          path: packages/${{ inputs.package }}/unitCov
+      - name: Install nyc
+        run: npm install -g nyc
+      - name: Merge coverage reports
+        run: |
+          mkdir -p combined_coverage final_coverage
+          nyc merge e2eCov combined_coverage/e2e.json
+          nyc merge compCov combined_coverage/component.json
+          nyc merge unitCov combined_coverage/unit.json
+          nyc merge combined_coverage final_coverage/combined-coverage.json
+      - name: Generate final coverage report
+        run: nyc report --reporter=lcov --temp-dir final_coverage --report-dir ./coverage
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v7
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: packages/${{ inputs.package }}/coverage/lcov.info
+          flags: ${{ inputs.package }}
+          name: codecov-combined
+          fail_ci_if_error: true
