@@ -70,3 +70,19 @@ jobs:
               | grep -vE '^\s*$' || true
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # Every folder must stay mirrorable to its old repository (tools/mirror.py): no symlink
+  # leaving a package unless it is one of the shared-data links in migration/names.yaml.
+  mirror-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Check the folders can be mirrored
+        run: uv run --no-project --with pyyaml==6.0.3 python tools/mirror.py --check HEAD

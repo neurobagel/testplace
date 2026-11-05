@@ -1,0 +1,102 @@
+name: mirror
+
+# Mirrors deploy/, testdata/ and each packages/<tool>/ to its old repository, through one
+# pull request per repository from the branch monorepo-mirror (tools/mirror.py; see
+# DEVELOPING.md, "The old repositories"). While an old repository is not locked (before
+# switchover) the pull request is a draft and nothing else is written there. The mirror
+# fast-forwards an old main when the old CI passes, and pushes the tags, only when BOTH the
+# repository variable MIRROR_MERGE is "true" (set by hand after switchover; never in the
+# rehearsal repository) AND the old repository is locked by the switchover ruleset.
+# Off while the repository variable MIRROR_OWNER is unset.
+#
+# A run fails when the old CI fails on a mirror pull request or the mirror hits an error;
+# the README badge shows it, and with the secret MIRROR_DISCORD_WEBHOOK set, a message with
+# the run link goes to Discord.
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "37 4 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Show what would be mirrored; write nothing
+        type: boolean
+        default: false
+      reset:
+        description: Rebuild the mirror branches from the import (after a rebuild of this repository)
+        type: boolean
+        default: false
+      adopt:
+        description: "REPO=SHA: accept commits on an old main that the mirror did not make (port them first)"
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mirror
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    if: vars.MIRROR_OWNER != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      statuses: write
+    steps:
+      - name: Generate a token for the old repositories
+        id: token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.NB_BOT_ID }}
+          private-key: ${{ secrets.NB_BOT_KEY }}
+          owner: ${{ vars.MIRROR_OWNER }}
+          repositories: |
+            recipes
+            neurobagel_examples
+            api
+            federation-api
+            annotation-tool
+            bagel-cli
+            query-tool
+
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Mirror
+        env:
+          MIRROR_TOKEN: ${{ steps.token.outputs.token }}
+          GH_TOKEN: ${{ github.token }}
+          MIRROR_OWNER: ${{ vars.MIRROR_OWNER }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          RESET: ${{ inputs.reset }}
+          ADOPT: ${{ inputs.adopt }}
+          MIRROR_MERGE: ${{ vars.MIRROR_MERGE }}
+        run: |
+          args=(--github)
+          [[ "$MIRROR_MERGE" == "true" ]] && args+=(--allow-merge)
+          [[ "$DRY_RUN" == "true" ]] && args+=(--dry-run)
+          [[ "$RESET" == "true" ]] && args+=(--reset)
+          [[ -n "$ADOPT" ]] && args+=(--adopt "$ADOPT")
+          uv run --no-project --with pyyaml==6.0.3 python tools/mirror.py "${args[@]}"
+
+      - name: Notify Discord on failure
+        if: failure()
+        env:
+          WEBHOOK: ${{ secrets.MIRROR_DISCORD_WEBHOOK }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [[ -z "$WEBHOOK" ]]; then echo "MIRROR_DISCORD_WEBHOOK not set: no notification"; exit 0; fi
+          jq -n --arg c "Mirror to the old repositories failed: $RUN_URL" '{content: $c}' \
+            | curl -fsS -H "Content-Type: application/json" -d @- "$WEBHOOK"

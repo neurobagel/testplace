@@ -1,5 +1,7 @@
 # Neurobagel
 
+[![mirror to the old repositories](https://github.com/neurobagel/neurobagel/actions/workflows/mirror.yml/badge.svg)](https://github.com/neurobagel/neurobagel/actions/workflows/mirror.yml)
+
 This repository holds the core Neurobagel tools. Each tool lives in its own folder under `packages/`, with its full history, and is versioned and released on its own.
 
 | Tool | Folder | Published as |
@@ -31,8 +33,9 @@ pre-commit install           # pre-commit checks on every commit; post-merge run
 - **One tool at a time.** Each tool keeps its own environment (`uv.lock` or `package-lock.json`) and commands: work from its folder, `packages/<tool>/`, and follow the "Working in the monorepo" section of its README.
 - **Pull request titles are conventional commits** (`fix(api): ...`, `feat(query-tool): ...`, `chore: ...`). PRs are squash-merged with the title as the commit message, and the title decides the release. A PR that should release more than one tool needs one commit per tool and a merge commit.
 - **Releases** are made by release-please from one combined release PR; each tool has its own version, changelog and tags `<tool>-v<version>`.
+- **The old repositories** (neurobagel/api, ...) are read-only mirrors of their folders here while the monorepo is on trial; keep each package self-contained.
 
-Details (CI, releases, publishing targets, dependency updates, repository settings) are in [DEVELOPING.md](DEVELOPING.md).
+Details (CI, releases, publishing targets, dependency updates, the mirror and the trial rules, repository settings) are in [DEVELOPING.md](DEVELOPING.md).
 
 ## License
 
