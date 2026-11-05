@@ -24,6 +24,7 @@ _This section is for the PR reviewer_
 
 - [ ] PR title is a conventional commit with the right type (it decides the release)
 - [ ] Multi-package PR that releases: one conventional commit per package, non-releasing title, merge with a merge commit
+- [ ] Packages stay self-contained and mirrorable (DEVELOPING.md, "Rules for the trial"); package workflows updated if the package's build or CI changed
 - [ ] PR links to a GitHub issue with `Closes #XXXX`
 - [ ] Tests pass
 - [ ] Checks pass

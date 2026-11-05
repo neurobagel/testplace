@@ -11,6 +11,7 @@ This guide covers what is shared across the tools in this repository. Each tool'
 | `testdata/` | Example data and API responses for tests (formerly neurobagel/neurobagel_examples) |
 | `.github/` | CI, release and publishing workflows for the whole repository |
 | `migration/` | Records and scripts of the migration to the monorepo (temporary) |
+| `tools/` | Repository tools: `mirror.py` (the mirror to the old repositories) |
 | `DEVELOPING.md` | This guide |
 
 Inside the packages, the old submodule folders are now symlinks to the shared folders, for example `packages/api/recipes -> ../../deploy`. On Windows, enable symlinks (`git config core.symlinks true`, Developer Mode) before cloning. bagel-cli's data folders (`bagel/communities`, `bagel/pipeline-catalog`, `tests/bids-examples`) are still git submodules.
@@ -108,6 +109,8 @@ Publishing targets come from repository variables, so the same workflows publish
 | `IMAGE_NAMESPACE` | `neurobagel` | `neurobagel` |
 | `PYPI_REPOSITORY_URL` | `https://test.pypi.org/legacy/` (with a TestPyPI `PYPI_TOKEN` repository secret) | unset (PyPI) |
 | `SITE_DEPLOY` | `false` | `true` |
+| `MIRROR_OWNER` | `neurobagel` (draft mirror PRs only, until the old repositories are locked) | `neurobagel` |
+| `MIRROR_MERGE` | unset (the mirror never merges or tags) | `true`, set by hand after the switchover |
 
 `images-validation.yml` (manual, temporary: for the migration's validation phase) builds and pushes every image with a `validation-<sha>` tag.
 
@@ -132,6 +135,42 @@ One `.github/dependabot.yml` covers every tool, checked weekly. Its PRs have `bu
 ## Required status checks
 
 None for now. When they are added, use **one always-running aggregator job** as the only required check. Path-filtered workflows that are skipped never report a status, so requiring them directly would block every PR that does not touch that tool.
+
+## The old repositories
+
+The monorepo is on trial for a few months. During the trial the old repositories (neurobagel/api, federation-api, annotation-tool, bagel-cli, query-tool, recipes, neurobagel_examples) are read-only mirrors of their folders here, and their own CI keeps running. If the monorepo is given up, development moves back to them with nothing to replay.
+
+### How the mirror works
+
+`.github/workflows/mirror.yml` runs `tools/mirror.py` on every push to `main` and nightly. For each old repository it:
+
+1. Adds one commit to the branch `monorepo-mirror` for each commit on `main` that changes the folder (`packages/<tool>/`, `deploy/` for recipes, `testdata/` for neurobagel_examples). The commit holds the folder exactly as it is here, with the original author, date and message. The only change: the shared-data symlinks (`recipes`, `neurobagel_examples`) become submodule pointers to the mirrored recipes and neurobagel_examples commits. A `Monorepo-Commit:` trailer records the source commit.
+2. Opens or updates one pull request from `monorepo-mirror` to `main`. The old repository's CI runs on it.
+3. Once that CI passes, fast-forwards the old `main` to the branch (GitHub then marks the PR merged; the next change opens a new one), and pushes the new tags: `api-v0.13.0` here becomes `v0.13.0` there. The old repositories get no GitHub Releases.
+4. Reports the old CI result as a commit status `mirror/<repo>` on the commit here, and keeps an issue "Mirror: old CI failing in ..." open while it is red.
+
+Step 3 needs two things: the repository variable `MIRROR_MERGE` set to `true` (by hand, after the switchover; never in the rehearsal repository), and a locked old repository (a ruleset restricts updates of `main`; the bot app is the only exception). Without both, the mirror only keeps the branch and a draft PR up to date: before the switchover the old repositories are still in use, and the draft only shows that the old CI passes on the mirrored code.
+
+The mirror stops with an error, and writes nothing, if an old `main` has a commit it did not make. Port that commit here (below), then run the workflow by hand with `adopt: <repo>=<sha>`. After rebuilding the repository the mirror is run by hand with `reset`. `dry_run` shows what would be mirrored.
+
+### Rules for the trial
+
+- **Keep every package self-contained.** Each one builds and tests from its own folder with its own lockfile and configs. No npm or uv workspace with a root lockfile, no imports across packages, no Docker builds from the repository root, no root config replacing a package config (adding root configs is fine).
+- **`packages/<tool>/.github/`, `.gitmodules` and the package configs are live:** they are the old repository's CI and setup. A change to a package's build or CI also updates its package workflows in the same PR.
+- **Packages reach `deploy/` and `testdata/` only through the existing symlinks.** The `mirror-check` PR check fails on other symlinks leaving a package.
+- **No renaming of package folders or tag prefixes, and no rewriting of `main`.**
+- **Red old CI is a must-fix:** fix it here; the mirror merges once it passes. It does not block merging here. Old CI can differ from the CI here (wider Python ranges, bagel-cli's `--upgrade`).
+
+### Porting a change from an old repository
+
+The old repositories take no changes of their own. To bring an open PR (or any commits) over, apply its commits to the package folder and open a PR here:
+
+```bash
+git -C ../api fetch origin pull/123/head:pr-123
+git -C ../api format-patch --stdout origin/main..pr-123 | git am -3 --directory=packages/api
+```
+
+The other way (when switching back): `git format-patch --relative=packages/api ... | git am -3` in the old repository.
 
 ## Repository settings
 
