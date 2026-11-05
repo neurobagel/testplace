@@ -1,0 +1,207 @@
+# Root pre-commit configuration of the monorepo.
+#
+# Every hook runs each package's existing linter/formatter config, scoped to the package
+# folder (`files:`) and with the config path passed explicitly, because hooks run from the
+# repository root. Package .pre-commit-config.yaml files are kept unchanged as dead code.
+# Hook versions are the ones the packages used upstream.
+#
+# Install: pre-commit install  (installs the pre-commit and post-merge hooks)
+
+default_install_hook_types: [pre-commit, post-merge]
+default_stages: [pre-commit]
+
+ci:
+  autofix_prs: false
+  autoupdate_commit_msg: "chore: pre-commit autoupdate"
+  # Need Docker or installed node_modules, which pre-commit.ci does not have.
+  # The frontend checks also run in the frontend CI workflows.
+  skip:
+    - docker-compose-check
+    - annotation-tool-typecheck
+    - annotation-tool-lint
+    - annotation-tool-format
+    - query-tool-typecheck
+    - query-tool-lint
+    - query-tool-format
+    - npm-ci-after-merge
+
+repos:
+  # --- Python formatting and linting (api, federation-api, bagel-cli) ---------------
+  - repo: https://github.com/psf/black-pre-commit-mirror
+    rev: 26.10.1
+    hooks:
+      - id: black
+        alias: black-api
+        files: ^packages/api/
+        args: [--config=packages/api/pyproject.toml]
+      - id: black
+        alias: black-federation-api
+        files: ^packages/federation-api/
+        args: [--config=packages/federation-api/pyproject.toml]
+      - id: black
+        alias: black-bagel-cli
+        files: ^packages/bagel-cli/
+        args: [--config=packages/bagel-cli/pyproject.toml]
+
+  - repo: https://github.com/PyCQA/flake8
+    rev: 7.5.0
+    hooks:
+      - id: flake8
+        alias: flake8-api
+        files: ^packages/api/
+        language_version: python3
+        args: [--config=packages/api/.flake8]
+      - id: flake8
+        alias: flake8-federation-api
+        files: ^packages/federation-api/
+        # federation-api passes its flake8 settings on the command line (no config file)
+        args:
+          - --extend-ignore=E501
+          - --extend-select=B950
+          - --per-file-ignores=./packages/federation-api/app/api/models.py:F722
+      - id: flake8
+        alias: flake8-bagel-cli
+        files: ^packages/bagel-cli/
+        language_version: python3
+        args: [--config=packages/bagel-cli/.flake8]
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-yaml
+        alias: check-yaml-python-packages
+        files: ^packages/(api|federation-api|bagel-cli)/
+      - id: check-toml
+        alias: check-toml-api-bagel-cli
+        files: ^packages/(api|bagel-cli)/
+      - id: pretty-format-json
+        alias: pretty-format-json-api
+        files: ^packages/api/
+        args: [--autofix, --no-sort-keys]
+
+  - repo: https://github.com/pycqa/isort
+    rev: 10.0.0b2
+    hooks:
+      # --settings-path only, never --src (resolved relative to the settings file)
+      - id: isort
+        alias: isort-api
+        files: ^packages/api/
+        args: [--settings-path=packages/api/pyproject.toml]
+      - id: isort
+        alias: isort-federation-api
+        files: ^packages/federation-api/
+        args: [--settings-path=packages/federation-api/pyproject.toml]
+      - id: isort
+        alias: isort-bagel-cli
+        files: ^packages/bagel-cli/
+        args: [--settings-path=packages/bagel-cli/pyproject.toml]
+
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.3
+    hooks:
+      - id: codespell
+        alias: codespell-api
+        files: ^packages/api/
+        additional_dependencies: [tomli]
+        args: [--config=packages/api/.codespellrc, --toml=packages/api/pyproject.toml]
+      - id: codespell
+        alias: codespell-federation-api
+        files: ^packages/federation-api/
+      - id: codespell
+        alias: codespell-bagel-cli
+        files: ^packages/bagel-cli/
+        additional_dependencies: [tomli]
+      # The frontends ran codespell in CI upstream; here it runs with the other hooks. Their
+      # .codespellrc `skip` globs do not match the paths pre-commit passes, so the same
+      # files are excluded here.
+      - id: codespell
+        alias: codespell-annotation-tool
+        files: ^packages/annotation-tool/
+        exclude: ^packages/annotation-tool/(src/assets/|package-lock\.json$|\.codespellrc$)|\.css$
+        args: [--config=packages/annotation-tool/.codespellrc]
+      - id: codespell
+        alias: codespell-query-tool
+        files: ^packages/query-tool/
+        exclude: ^packages/query-tool/(package-lock\.json$|\.codespellrc$)|\.css$
+        args: [--config=packages/query-tool/.codespellrc]
+
+  - repo: https://github.com/iamthefij/docker-pre-commit
+    rev: v3.0.1
+    hooks:
+      - id: docker-compose-check
+        files: ^packages/api/docker-compose\.yml$
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v2.4.1
+    hooks:
+      - id: mypy
+        alias: mypy-api
+        files: ^packages/api/
+        additional_dependencies: [pydantic]
+        args: [--config-file=packages/api/pyproject.toml]
+      - id: mypy
+        alias: mypy-bagel-cli
+        files: ^packages/bagel-cli/
+        args: [--config-file=packages/bagel-cli/pyproject.toml]
+
+  # --- GitHub configuration ----------------------------------------------------------
+  - repo: https://github.com/python-jsonschema/check-jsonschema
+    rev: 0.39.0
+    hooks:
+      - id: check-github-workflows
+        alias: check-github-workflows-federation-api
+        files: ^packages/federation-api/\.github/workflows/[^/]+$
+      - id: check-github-workflows
+        alias: check-github-workflows-root
+      - id: check-dependabot
+
+  # --- Frontends (upstream husky + lint-staged) ---------------------------------------
+  # lint-staged ran typecheck and lint on staged ts/tsx files and format:check on any
+  # staged file, each over the whole package. Needs `npm ci` in the package.
+  - repo: local
+    hooks:
+      - id: annotation-tool-typecheck
+        name: annotation-tool typecheck
+        language: system
+        entry: npm --prefix packages/annotation-tool run typecheck
+        files: ^packages/annotation-tool/.*\.(ts|tsx)$
+        pass_filenames: false
+      - id: annotation-tool-lint
+        name: annotation-tool lint
+        language: system
+        entry: npm --prefix packages/annotation-tool run lint:check
+        files: ^packages/annotation-tool/.*\.(ts|tsx)$
+        pass_filenames: false
+      - id: annotation-tool-format
+        name: annotation-tool format check
+        language: system
+        entry: npm --prefix packages/annotation-tool run format:check
+        files: ^packages/annotation-tool/
+        pass_filenames: false
+      - id: query-tool-typecheck
+        name: query-tool typecheck
+        language: system
+        entry: npm --prefix packages/query-tool run typecheck
+        files: ^packages/query-tool/.*\.(ts|tsx)$
+        pass_filenames: false
+      - id: query-tool-lint
+        name: query-tool lint
+        language: system
+        entry: npm --prefix packages/query-tool run lint:check
+        files: ^packages/query-tool/.*\.(ts|tsx)$
+        pass_filenames: false
+      - id: query-tool-format
+        name: query-tool format check
+        language: system
+        entry: npm --prefix packages/query-tool run format:check
+        files: ^packages/query-tool/
+        pass_filenames: false
+      # Upstream husky post-merge hook: reinstall a frontend's dependencies when its
+      # package.json changed in the merge.
+      - id: npm-ci-after-merge
+        name: npm ci after merge (frontends)
+        language: system
+        entry: bash -c 'for d in packages/annotation-tool packages/query-tool; do git diff --quiet ORIG_HEAD HEAD -- "$d/package.json" || npm --prefix "$d" ci || exit 1; done'
+        stages: [post-merge]
+        always_run: true
+        pass_filenames: false

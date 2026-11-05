@@ -1,0 +1,72 @@
+name: pr checks
+
+# PRs are squash-merged with the PR title as the commit message, and release-please reads
+# the commit messages: the title must be a conventional commit. Multi-tool PRs follow the
+# merge convention in DEVELOPING.md, checked at review with the release preview below.
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  pr-title:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    steps:
+      - name: Check the PR title
+        uses: amannn/action-semantic-pull-request@v6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            perf
+            revert
+            docs
+            style
+            refactor
+            test
+            build
+            ci
+            chore
+          # tool folders under packages/; deps and deps-dev for Dependabot
+          scopes: |
+            api
+            federation-api
+            annotation-tool
+            bagel-cli
+            query-tool
+            deps
+            deps-dev
+
+  # Informational: the versions and changelog entries release-please would propose if this
+  # PR's commits landed on main as they are (a merge commit; a squash gives every changed
+  # tool the PR title's entry instead). Written to the job summary; never blocks.
+  release-preview:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+
+      - name: release-please dry run
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # PRs from forks: the branch is not in this repository, so preview main
+          TARGET: ${{ github.event.pull_request.head.repo.full_name == github.repository && github.head_ref || 'main' }}
+        run: |
+          {
+            echo "## release-please dry run on \`$TARGET\`"
+            echo
+            echo '```'
+            npx --yes release-please@17.11.2 release-pr --dry-run \
+              --token "$GITHUB_TOKEN" --repo-url "$GITHUB_REPOSITORY" --target-branch "$TARGET" 2>&1 \
+              | grep -vE '^\s*$' || true
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"

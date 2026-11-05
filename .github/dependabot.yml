@@ -1,0 +1,84 @@
+# Dependabot for the monorepo (replaces the per-repo copies of the org template, which
+# stay in packages/*/.github as dead code).
+#
+# Same policy as upstream: GitHub Actions and submodules weekly; npm minor/patch updates
+# grouped, majors ignored; Python (uv) security updates only (version updates off via
+# open-pull-requests-limit: 0). New: Docker base images, grouped, with major updates and
+# Python minor updates (python:3.10 -> 3.13) ignored; submodule updates grouped.
+# Every entry uses the commit-message prefix "build", so dependabot PR titles pass the PR
+# title check and release nothing.
+
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "build"
+    labels: ["_bot", "dependencies"]
+
+  # bagel-cli's data submodules (root .gitmodules)
+  - package-ecosystem: "gitsubmodule"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      bagel-cli-submodules:
+        patterns: ["*"]
+    commit-message:
+      prefix: "build"
+    labels: ["_bot", "dependencies"]
+
+  - package-ecosystem: "npm"
+    directories:
+      - "/packages/annotation-tool"
+      - "/packages/query-tool"
+    schedule:
+      interval: "weekly"
+    groups:
+      production-dependencies:
+        applies-to: version-updates
+        dependency-type: "production"
+      development-dependencies:
+        applies-to: version-updates
+        dependency-type: "development"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    commit-message:
+      prefix: "build"
+    labels: ["_bot", "dependencies"]
+
+  - package-ecosystem: "uv"
+    directories:
+      - "/packages/api"
+      - "/packages/federation-api"
+      - "/packages/bagel-cli"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    commit-message:
+      prefix: "build"
+    labels: ["_bot", "dependencies"]
+
+  - package-ecosystem: "docker"
+    directories:
+      - "/packages/api"
+      - "/packages/federation-api"
+      - "/packages/bagel-cli"
+      - "/packages/query-tool"
+    schedule:
+      interval: "weekly"
+    groups:
+      docker-base-images:
+        patterns: ["*"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+      # python:3.10 -> 3.13 counts as a minor update but changes the images' runtime Python
+      - dependency-name: "python"
+        update-types: ["version-update:semver-minor"]
+    commit-message:
+      prefix: "build"
+    labels: ["_bot", "dependencies"]
