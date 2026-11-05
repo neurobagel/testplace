@@ -1,0 +1,31 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "2d9078de3e76334a19823d158696a87b35a349c0",
+  "separate-pull-requests": false,
+  "bump-minor-pre-major": true,
+  "include-component-in-tag": true,
+  "include-v-in-tag": true,
+  "tag-separator": "-",
+  "packages": {
+    "packages/api": {
+      "release-type": "simple",
+      "component": "api"
+    },
+    "packages/federation-api": {
+      "release-type": "simple",
+      "component": "federation-api"
+    },
+    "packages/annotation-tool": {
+      "release-type": "node",
+      "component": "annotation-tool"
+    },
+    "packages/bagel-cli": {
+      "release-type": "simple",
+      "component": "bagel-cli"
+    },
+    "packages/query-tool": {
+      "release-type": "node",
+      "component": "query-tool"
+    }
+  }
+}

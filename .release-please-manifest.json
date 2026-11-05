@@ -1,0 +1,7 @@
+{
+  "packages/api": "0.12.0",
+  "packages/federation-api": "0.10.0",
+  "packages/annotation-tool": "0.7.10",
+  "packages/bagel-cli": "0.11.6",
+  "packages/query-tool": "0.17.1"
+}
