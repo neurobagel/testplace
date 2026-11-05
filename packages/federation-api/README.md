@@ -87,3 +87,24 @@ Also don't forget to set up pre-commit with
 ```bash
 uv run pre-commit install
 ```
+
+## Working in the monorepo
+
+This tool lives in `packages/federation-api` of the Neurobagel monorepo ([neurobagel/neurobagel](https://github.com/neurobagel/neurobagel)). Clone the monorepo, not the old `neurobagel/federation-api` repository, which is a read-only mirror of this folder:
+
+```bash
+git clone --recurse-submodules https://github.com/neurobagel/neurobagel.git
+cd neurobagel
+```
+
+Differences from the instructions above: pin the Python version (CI tests 3.12 and 3.13), and run the commands from `packages/federation-api`.
+
+From the monorepo root:
+
+```bash
+cd packages/federation-api
+uv sync --python 3.12 --group dev
+uv run --python 3.12 pytest
+```
+
+Code style checks run through the monorepo's root pre-commit configuration (`pre-commit install` at the repository root). Pull request titles must be conventional commits, and releases (tags `federation-api-v<version>`) are made from the monorepo; see [DEVELOPING.md](https://github.com/neurobagel/neurobagel/blob/main/DEVELOPING.md).
