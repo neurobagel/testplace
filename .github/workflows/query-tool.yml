@@ -1,0 +1,34 @@
+name: query-tool
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/query-tool/**"
+      - "deploy/**"
+      - "testdata/**"
+      - ".github/workflows/query-tool.yml"
+      - ".github/workflows/test-node.yml"
+  pull_request:
+    paths:
+      - "packages/query-tool/**"
+      - "deploy/**"
+      - "testdata/**"
+      - ".github/workflows/query-tool.yml"
+      - ".github/workflows/test-node.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    uses: ./.github/workflows/test-node.yml
+    with:
+      package: query-tool
+      component-env: NB_API_QUERY_URL=https://federate.neurobagel.org/
+      e2e-env: |
+        NB_API_QUERY_URL=https://federate.neurobagel.org/
+        NB_ENABLE_AUTH=true
+        NB_QUERY_CLIENT_ID=mockclientid
+    secrets: inherit

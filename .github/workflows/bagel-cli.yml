@@ -1,0 +1,33 @@
+name: bagel-cli
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/bagel-cli/**"
+      - "deploy/**"
+      - "testdata/**"
+      - ".gitmodules"
+      - ".github/workflows/bagel-cli.yml"
+      - ".github/workflows/test-python.yml"
+  pull_request:
+    paths:
+      - "packages/bagel-cli/**"
+      - "deploy/**"
+      - "testdata/**"
+      - ".gitmodules"
+      - ".github/workflows/bagel-cli.yml"
+      - ".github/workflows/test-python.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    uses: ./.github/workflows/test-python.yml
+    with:
+      package: bagel-cli
+      pytest-args: -m "integration or not integration"
+      submodules: true
+    secrets: inherit
