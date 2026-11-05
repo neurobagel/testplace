@@ -1,0 +1,31 @@
+name: federation-api
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/federation-api/**"
+      - "deploy/**"
+      - "testdata/**"
+      - ".gitmodules"
+      - ".github/workflows/federation-api.yml"
+      - ".github/workflows/test-python.yml"
+  pull_request:
+    paths:
+      - "packages/federation-api/**"
+      - "deploy/**"
+      - "testdata/**"
+      - ".gitmodules"
+      - ".github/workflows/federation-api.yml"
+      - ".github/workflows/test-python.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    uses: ./.github/workflows/test-python.yml
+    with:
+      package: federation-api
+    secrets: inherit

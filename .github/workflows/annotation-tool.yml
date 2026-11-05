@@ -1,0 +1,33 @@
+name: annotation-tool
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/annotation-tool/**"
+      - "deploy/**"
+      - "testdata/**"
+      - ".github/workflows/annotation-tool.yml"
+      - ".github/workflows/test-node.yml"
+  pull_request:
+    paths:
+      - "packages/annotation-tool/**"
+      - "deploy/**"
+      - "testdata/**"
+      - ".github/workflows/annotation-tool.yml"
+      - ".github/workflows/test-node.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    uses: ./.github/workflows/test-node.yml
+    with:
+      package: annotation-tool
+      typecheck: true
+      unit: true
+      e2e-env: NB_DISABLE_CONFIG=false
+      coverage: true
+    secrets: inherit

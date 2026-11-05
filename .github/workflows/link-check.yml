@@ -1,0 +1,55 @@
+name: link check
+
+# Central link check. During the migration it runs each package's existing link checker
+# with its own config (a single monorepo-wide checker comes later):
+#   api: linkspector (packages/api/.linkspector.yml, README.md)
+#   annotation-tool: lychee (packages/annotation-tool/lychee.toml)
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  api-linkspector:
+    name: api (linkspector)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/api
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # Same workaround as upstream: puppeteer no longer downloads Chrome on install.
+      # See https://github.com/UmbrellaDocs/action-linkspector/issues/62
+      - name: Install Chrome for puppeteer
+        run: npx --yes puppeteer@^24 browsers install chrome
+      # The action runs from the repository root; run linkspector (the version the action
+      # installs) from the package folder so the package's config and README are used.
+      # As the action does: Ubuntu 24.04's AppArmor blocks Chrome's sandbox (unprivileged user
+      # namespaces); without this, linkspector fails with "Failed to launch the browser process".
+      - name: Allow Chrome's sandbox
+        run: echo 0 | sudo tee /proc/sys/kernel/apparmor_restrict_unprivileged_userns
+      - name: Run linkspector
+        run: npx --yes @umbrelladocs/linkspector@0.4.7 check -c .linkspector.yml
+
+  annotation-tool-lychee:
+    name: annotation-tool (lychee)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Check links
+        uses: lycheeverse/lychee-action@v2
+        with:
+          workingDirectory: packages/annotation-tool
+          fail: true
+          # Release PR changelogs link to compare views of tags that only exist after merge.
+          args: --verbose --no-progress --exclude 'github\.com/[^/]+/[^/]+/compare/' '**/*.md' '**/*.html' '**/*.ts' '**/*.tsx'

@@ -1,0 +1,146 @@
+name: query-tool examples
+
+# Ported from query-tool's generate_examples_diff.yaml and updated_examples.yaml.
+# The reference example results now live in testdata/query-tool-results/ (formerly the
+# neurobagel/neurobagel_examples repository).
+#   pull_request: regenerate the example TSVs and diff them against testdata/; the diff is
+#                 posted as a PR comment by query-tool-examples-comment.yml.
+#   push to main: regenerate the example TSVs and open a PR that updates testdata/.
+on:
+  pull_request:
+    paths:
+      - "packages/query-tool/**"
+      - "testdata/**"
+      - ".github/workflows/query-tool-examples.yml"
+  push:
+    branches: [main]
+    paths:
+      - "packages/query-tool/**"
+      - "testdata/**"
+      - ".github/workflows/query-tool-examples.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/query-tool
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up node env
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+
+      - name: Create .env file
+        run: |
+          echo -e "NB_API_QUERY_URL=https://federate.neurobagel.org/\nNB_ENABLE_AUTH=true\nNB_QUERY_CLIENT_ID=mockclientid" > .env
+
+      - name: Build
+        run: npm ci && npm run build
+
+      - name: Run Cypress tests to generate example TSVs
+        uses: cypress-io/github-action@v7
+        with:
+          working-directory: packages/query-tool
+          install: false
+          wait-on: http://localhost:5173
+          start: npm run preview
+          spec: cypress/e2e/UpdateExamples.cy.ts
+          component: false
+
+      - name: Normalize generated TSV names
+        run: |
+          mv cypress/downloads/neurobagel-query-results_*.tsv cypress/downloads/neurobagel-query-results_YYYYMMDDHHMMSS.tsv
+          mv cypress/downloads/neurobagel-query-results-with-URIs_*.tsv cypress/downloads/neurobagel-query-results-with-URIs_YYYYMMDDHHMMSS.tsv
+
+      - name: Upload generated TSVs
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: query-tool-results
+          path: packages/query-tool/cypress/downloads/*.tsv
+
+  diff:
+    if: github.event_name == 'pull_request'
+    needs: generate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Download generated TSVs
+        uses: actions/download-artifact@v8
+        with:
+          name: query-tool-results
+          path: generated
+
+      - name: Compute diff against testdata/
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          mkdir -p diff-artifact
+          echo "$PR_NUMBER" > diff-artifact/pr_number.txt
+          ref=testdata/query-tool-results
+          diff -U 0 --label "reference/neurobagel-query-results_YYYYMMDDHHMMSS.tsv" --label "generated/neurobagel-query-results_YYYYMMDDHHMMSS.tsv" \
+            "$ref/neurobagel-query-results_YYYYMMDDHHMMSS.tsv" generated/neurobagel-query-results_YYYYMMDDHHMMSS.tsv \
+            > diff-artifact/results.diff || true
+          diff -U 0 --label "reference/neurobagel-query-results-with-URIs_YYYYMMDDHHMMSS.tsv" --label "generated/neurobagel-query-results-with-URIs_YYYYMMDDHHMMSS.tsv" \
+            "$ref/neurobagel-query-results-with-URIs_YYYYMMDDHHMMSS.tsv" generated/neurobagel-query-results-with-URIs_YYYYMMDDHHMMSS.tsv \
+            > diff-artifact/results_uris.diff || true
+          if [ -s diff-artifact/results.diff ] || [ -s diff-artifact/results_uris.diff ]; then
+            echo "true" > diff-artifact/has_diff.txt
+          else
+            echo "false" > diff-artifact/has_diff.txt
+          fi
+
+      - name: Upload diff artifact
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: examples-diff-artifact
+          path: diff-artifact/
+
+  update-testdata:
+    if: github.event_name != 'pull_request'
+    needs: generate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate a token
+        id: generate-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.NB_BOT_ID }}
+          private-key: ${{ secrets.NB_BOT_KEY }}
+
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          token: ${{ steps.generate-token.outputs.token }}
+
+      - name: Download generated TSVs
+        uses: actions/download-artifact@v8
+        with:
+          name: query-tool-results
+          path: testdata/query-tool-results
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v8
+        with:
+          token: ${{ steps.generate-token.outputs.token }}
+          add-paths: testdata/query-tool-results/*.tsv
+          commit-message: "test: update query-tool example results in testdata/"
+          title: "test: update query-tool example results in testdata/"
+          body: "This PR updates `testdata/query-tool-results` with the latest results generated by the query tool."
+          base: main
+          branch: update-query-tool-results
+          committer: NeuroBagel Bot <neurobagel-bot[bot]@users.noreply.github.com>
+          labels: _bot
