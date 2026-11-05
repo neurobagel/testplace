@@ -1,0 +1,61 @@
+name: images validation
+
+# TEMPORARY (migration): for Phase 5 validation; remove together with migration/ (plan
+# step 23).
+#
+# Manual: build every image and push it to the configured registry with a non-release tag
+# (validation-<short sha>), to validate the image builds without touching nightly, latest
+# or version tags.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  api:
+    uses: ./.github/workflows/docker-build.yml
+    with:
+      package: api
+      image: api
+      tags: type=sha,prefix=validation-
+    secrets: inherit
+
+  federation-api:
+    uses: ./.github/workflows/docker-build.yml
+    with:
+      package: federation-api
+      image: federation_api
+      tags: type=sha,prefix=validation-
+    secrets: inherit
+
+  bagel-cli-nightly:
+    uses: ./.github/workflows/docker-build.yml
+    with:
+      package: bagel-cli
+      image: bagelcli
+      dockerfile: Dockerfile.nightly
+      tags: type=sha,prefix=validation-
+      submodules: true
+      hatch-version-arg: SETUPTOOLS_SCM_PRETEND_VERSION
+    secrets: inherit
+
+  # The release Dockerfile installs bagel from PyPI.
+  bagel-cli-release:
+    uses: ./.github/workflows/docker-build.yml
+    with:
+      package: bagel-cli
+      image: bagelcli
+      tags: type=sha,prefix=validation-,suffix=-release
+    secrets: inherit
+
+  query-tool:
+    uses: ./.github/workflows/docker-build.yml
+    with:
+      package: query-tool
+      image: query_tool
+      tags: type=sha,prefix=validation-
+      platforms: linux/amd64
+      package-json-version: build:{short-sha}
+    secrets: inherit

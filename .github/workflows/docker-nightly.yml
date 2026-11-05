@@ -1,0 +1,114 @@
+name: docker nightly
+
+# On every push to main: build and push the `nightly` image of each package whose image
+# inputs changed (its folder, the shared folders its symlinks point to, the image
+# workflows). workflow_dispatch builds all.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      api: ${{ steps.filter.outputs.api }}
+      federation-api: ${{ steps.filter.outputs.federation-api }}
+      bagel-cli: ${{ steps.filter.outputs.bagel-cli }}
+      query-tool: ${{ steps.filter.outputs.query-tool }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Changed images
+        id: filter
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            api:
+              - '.github/workflows/docker-nightly.yml'
+              - '.github/workflows/docker-build.yml'
+              - 'packages/api/**'
+              - 'deploy/**'
+              - 'testdata/**'
+            federation-api:
+              - '.github/workflows/docker-nightly.yml'
+              - '.github/workflows/docker-build.yml'
+              - 'packages/federation-api/**'
+            bagel-cli:
+              - '.github/workflows/docker-nightly.yml'
+              - '.github/workflows/docker-build.yml'
+              - 'packages/bagel-cli/**'
+              - 'testdata/**'
+              - '.gitmodules'
+            query-tool:
+              - '.github/workflows/docker-nightly.yml'
+              - '.github/workflows/docker-build.yml'
+              - 'packages/query-tool/**'
+              - 'deploy/**'
+              - 'testdata/**'
+
+  api:
+    needs: changes
+    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.changes.outputs.api == 'true') }}
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/docker-build.yml
+    with:
+      package: api
+      image: api
+      tags: type=raw,value=nightly
+    secrets: inherit
+
+  federation-api:
+    needs: changes
+    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.changes.outputs.federation-api == 'true') }}
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/docker-build.yml
+    with:
+      package: federation-api
+      image: federation_api
+      tags: type=raw,value=nightly
+    secrets: inherit
+
+  # Built from source with Dockerfile.nightly; the version comes from the bagel-cli tags.
+  bagel-cli:
+    needs: changes
+    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.changes.outputs.bagel-cli == 'true') }}
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/docker-build.yml
+    with:
+      package: bagel-cli
+      image: bagelcli
+      dockerfile: Dockerfile.nightly
+      tags: type=raw,value=nightly
+      submodules: true
+      hatch-version-arg: SETUPTOOLS_SCM_PRETEND_VERSION
+    secrets: inherit
+
+  # As upstream: amd64 only; the app shows build:<short sha> as its version.
+  query-tool:
+    needs: changes
+    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.changes.outputs.query-tool == 'true') }}
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/docker-build.yml
+    with:
+      package: query-tool
+      image: query_tool
+      tags: type=raw,value=nightly
+      platforms: linux/amd64
+      package-json-version: build:{short-sha}
+    secrets: inherit
