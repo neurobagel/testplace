@@ -1,0 +1,53 @@
+name: release
+
+# release-please keeps one combined release PR for all packages (versions, changelogs).
+# Merging it makes release-please create one GitHub Release, and with it the tag
+# <component>-v<version>, per released package. Its outputs then start the publishing
+# jobs below.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      api: ${{ steps.rp.outputs['packages/api--release_created'] }}
+      api-version: ${{ steps.rp.outputs['packages/api--version'] }}
+      federation-api: ${{ steps.rp.outputs['packages/federation-api--release_created'] }}
+      federation-api-version: ${{ steps.rp.outputs['packages/federation-api--version'] }}
+      annotation-tool: ${{ steps.rp.outputs['packages/annotation-tool--release_created'] }}
+      annotation-tool-version: ${{ steps.rp.outputs['packages/annotation-tool--version'] }}
+      bagel-cli: ${{ steps.rp.outputs['packages/bagel-cli--release_created'] }}
+      bagel-cli-version: ${{ steps.rp.outputs['packages/bagel-cli--version'] }}
+      query-tool: ${{ steps.rp.outputs['packages/query-tool--release_created'] }}
+      query-tool-version: ${{ steps.rp.outputs['packages/query-tool--version'] }}
+    steps:
+      - name: Generate a token
+        id: generate-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.NB_BOT_ID }}
+          private-key: ${{ secrets.NB_BOT_KEY }}
+
+      # The bot token makes release PRs trigger CI (GITHUB_TOKEN PRs do not).
+      - name: Run release-please
+        id: rp
+        uses: googleapis/release-please-action@v5
+        with:
+          token: ${{ steps.generate-token.outputs.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      - name: Show outputs
+        env:
+          OUTPUTS: ${{ toJSON(steps.rp.outputs) }}
+        run: echo "$OUTPUTS"
