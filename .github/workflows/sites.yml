@@ -1,0 +1,121 @@
+name: sites
+
+# Static sites on Netlify (formerly GitHub Pages; one repository can serve only one Pages
+# site). Called by the release workflow when release-please releases one of the frontends,
+# or run manually for a released version. Deploys only when the repository variable
+# SITE_DEPLOY is "true".
+#   annotation-tool -> annotate.neurobagel.org (NETLIFY_ANNOTATE_SITE_ID) and the beta
+#                      site (NETLIFY_PROD_SITE_ID, as upstream's Netlify job)
+#   query-tool      -> query.neurobagel.org (NETLIFY_QUERY_SITE_ID)
+on:
+  workflow_call:
+    inputs:
+      package:
+        description: annotation-tool or query-tool
+        required: true
+        type: string
+      version:
+        description: Released version (X.Y.Z)
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      package:
+        description: Package to deploy
+        required: true
+        type: choice
+        options: [annotation-tool, query-tool]
+      version:
+        description: Released version to deploy (X.Y.Z; the tag <package>-vX.Y.Z must exist)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sites-${{ inputs.package }}
+  cancel-in-progress: true
+
+jobs:
+  annotation-tool:
+    if: inputs.package == 'annotation-tool' && vars.SITE_DEPLOY == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        site: [main, beta]
+    defaults:
+      run:
+        working-directory: packages/annotation-tool
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.package }}-v${{ inputs.version }}
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+      - name: Install dependencies
+        run: npm ci
+      # main: upstream's GitHub Pages build; beta: upstream's Netlify build
+      - name: Build (main)
+        if: matrix.site == 'main'
+        run: npm run build
+        env:
+          NB_ANALYTICS: true
+      - name: Build (beta)
+        if: matrix.site == 'beta'
+        run: npm run build
+        env:
+          NB_ANALYTICS: true
+          NB_DISABLE_CONFIG: false
+          NB_GOOGLE_APPS_SCRIPT_URL: ${{ secrets.NB_GOOGLE_APPS_SCRIPT_URL }}
+          SECRETS_SCAN_OMIT_KEYS: NB_GOOGLE_APPS_SCRIPT_URL
+      - name: Deploy to Netlify
+        run: npx netlify-cli deploy --no-build --dir=dist --prod
+        env:
+          NETLIFY_SITE_ID: ${{ matrix.site == 'main' && secrets.NETLIFY_ANNOTATE_SITE_ID || secrets.NETLIFY_PROD_SITE_ID }}
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+
+  query-tool:
+    if: inputs.package == 'query-tool' && vars.SITE_DEPLOY == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/query-tool
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.package }}-v${{ inputs.version }}
+          persist-credentials: false
+      - name: Add prod scripts
+        run: |
+          add_script='<script async src="https://w.appzi.io/w.js?token=YVTHd"></script><script defer data-domain="query.neurobagel.org" src="https://plausible.neurobagel.org/js/script.js"></script>'
+          # Need to use single quotes around sed to avoid ! to be interpreted as a history expansion character
+          sed -i 's|<!-- REPLACE_ME_NB_QUERY_HEADER_SCRIPT_REPLACE_ME -->|'"${add_script}"'|' index.html
+      # The app displays its version; upstream set it from the release tag (vX.Y.Z)
+      - name: Set release version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          release_version="v${VERSION}"
+          jq ".version = \"$release_version\"" package.json > tmp.$$.json && mv tmp.$$.json package.json
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+      - name: Create .env file
+        run: |
+          echo -e "NB_API_QUERY_URL=https://federate.neurobagel.org/" > .env
+      - name: Install dependencies
+        run: npm ci
+      - name: Build
+        run: npm run build
+      - name: Deploy to Netlify
+        run: npx netlify-cli deploy --no-build --dir=dist --prod
+        env:
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_QUERY_SITE_ID }}
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}

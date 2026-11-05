@@ -51,3 +51,83 @@ jobs:
         env:
           OUTPUTS: ${{ toJSON(steps.rp.outputs) }}
         run: echo "$OUTPUTS"
+
+  # --- publishing: images v<version> and latest, bagel on PyPI, the sites ----------------
+  # Reruns: "Re-run failed jobs" on this workflow run; sites.yml can also be run by hand.
+  api-image:
+    needs: release-please
+    if: needs.release-please.outputs.api == 'true'
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/docker-build.yml
+    with:
+      package: api
+      image: api
+      tags: |
+        type=raw,value=v${{ needs.release-please.outputs.api-version }}
+        type=raw,value=latest
+    secrets: inherit
+
+  federation-api-image:
+    needs: release-please
+    if: needs.release-please.outputs.federation-api == 'true'
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/docker-build.yml
+    with:
+      package: federation-api
+      image: federation_api
+      tags: |
+        type=raw,value=v${{ needs.release-please.outputs.federation-api-version }}
+        type=raw,value=latest
+    secrets: inherit
+
+  # The app shows its version; upstream set package.json's version to the release tag.
+  query-tool-image:
+    needs: release-please
+    if: needs.release-please.outputs.query-tool == 'true'
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/docker-build.yml
+    with:
+      package: query-tool
+      image: query_tool
+      tags: |
+        type=raw,value=v${{ needs.release-please.outputs.query-tool-version }}
+        type=raw,value=latest
+      platforms: linux/amd64
+      package-json-version: v${{ needs.release-please.outputs.query-tool-version }}
+    secrets: inherit
+
+  # PyPI, then the release image (which installs that version from PyPI)
+  bagel-cli:
+    needs: release-please
+    if: needs.release-please.outputs.bagel-cli == 'true'
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/bagel-cli-release.yml
+    with:
+      version: ${{ needs.release-please.outputs.bagel-cli-version }}
+    secrets: inherit
+
+  annotation-tool-site:
+    needs: release-please
+    if: needs.release-please.outputs.annotation-tool == 'true'
+    uses: ./.github/workflows/sites.yml
+    with:
+      package: annotation-tool
+      version: ${{ needs.release-please.outputs.annotation-tool-version }}
+    secrets: inherit
+
+  query-tool-site:
+    needs: release-please
+    if: needs.release-please.outputs.query-tool == 'true'
+    uses: ./.github/workflows/sites.yml
+    with:
+      package: query-tool
+      version: ${{ needs.release-please.outputs.query-tool-version }}
+    secrets: inherit

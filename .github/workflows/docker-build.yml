@@ -1,0 +1,148 @@
+name: docker build (reusable)
+
+# Builds one package's image from its own folder with its existing Dockerfile and pushes
+# it to ${IMAGE_REGISTRY}/${IMAGE_NAMESPACE}/<image> (repository variables: ghcr during
+# validation, Docker Hub in production).
+on:
+  workflow_call:
+    inputs:
+      package:
+        description: Folder under packages/ (the build context)
+        required: true
+        type: string
+      image:
+        description: Image name (published artifact name, e.g. api, federation_api)
+        required: true
+        type: string
+      dockerfile:
+        description: Dockerfile, relative to the package folder
+        required: false
+        type: string
+        default: Dockerfile
+      tags:
+        description: Image tags as docker/metadata-action rules, one per line (e.g. type=raw,value=nightly)
+        required: true
+        type: string
+      platforms:
+        required: false
+        type: string
+        default: linux/arm64, linux/amd64
+      submodules:
+        description: Check out submodules (bagel-cli data)
+        required: false
+        type: boolean
+        default: false
+      hatch-version-arg:
+        description: Compute the package version with hatch-vcs and pass it as this build argument
+        required: false
+        type: string
+        default: ""
+      package-json-version:
+        description: Set package.json "version" to this value before building (query-tool); {short-sha} is replaced by the commit's short SHA
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check registry configuration
+        env:
+          REGISTRY: ${{ vars.IMAGE_REGISTRY }}
+          NAMESPACE: ${{ vars.IMAGE_NAMESPACE }}
+        run: |
+          if [ -z "$REGISTRY" ] || [ -z "$NAMESPACE" ]; then
+            echo "::error::Set the repository variables IMAGE_REGISTRY and IMAGE_NAMESPACE"; exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          submodules: ${{ inputs.submodules }}
+          persist-credentials: false
+
+      # The package's symlinks into deploy/ and testdata/ (former submodules) would dangle
+      # inside the build context (query-tool's build type-checks a Cypress spec that imports
+      # from neurobagel_examples). Replace them with copies, as upstream's context had the
+      # submodule contents.
+      - name: Materialize symlinks in the build context
+        working-directory: packages/${{ inputs.package }}
+        run: |
+          git ls-files -s . | awk '$1=="120000" {print $4}' | while read -r link; do
+            target="$(readlink -f "$link")"
+            rm "$link"
+            cp -R "$target" "$link"
+            echo "materialized $link"
+          done
+
+      - name: Set up uv
+        if: inputs.hatch-version-arg != ''
+        uses: astral-sh/setup-uv@v7
+
+      - name: Compute the version with hatch-vcs
+        id: hatch
+        if: inputs.hatch-version-arg != ''
+        working-directory: packages/${{ inputs.package }}
+        run: |
+          uvx --quiet --with hatch-vcs hatchling version > /tmp/version
+          echo "version=$(cat /tmp/version)" >> "$GITHUB_OUTPUT"
+          echo "version: $(cat /tmp/version)"
+
+      - name: Update package.json version
+        if: inputs.package-json-version != ''
+        working-directory: packages/${{ inputs.package }}
+        env:
+          VERSION: ${{ inputs.package-json-version }}
+        run: |
+          VERSION="${VERSION//\{short-sha\}/${GITHUB_SHA::7}}"
+          jq ".version = \"${VERSION}\"" package.json > tmp.$$.json && mv tmp.$$.json package.json
+          cat package.json
+
+      # Tags as given; OCI labels (created, revision, source, version = first tag, ...) as
+      # upstream's release images had them.
+      - name: Image name, tags and labels
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ vars.IMAGE_REGISTRY }}/${{ vars.IMAGE_NAMESPACE }}/${{ inputs.image }}
+          tags: ${{ inputs.tags }}
+          flavor: latest=false
+
+      - name: Login to the registry (Docker Hub)
+        if: vars.IMAGE_REGISTRY == 'docker.io'
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Login to the registry (ghcr)
+        if: vars.IMAGE_REGISTRY == 'ghcr.io'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          platforms: ${{ inputs.platforms }}
+          context: packages/${{ inputs.package }}
+          file: packages/${{ inputs.package }}/${{ inputs.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            ${{ inputs.hatch-version-arg != '' && format('{0}={1}', inputs.hatch-version-arg, steps.hatch.outputs.version) || '' }}
