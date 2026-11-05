@@ -1,0 +1,1020 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 5 Nov 2026 17:00:50 +0000
+Subject: [PATCH 4/8] ci: add path-filtered per-package CI and ported upstream
+ checks
+
+- test-python.yml / test-node.yml: reusable test workflows. Python: shared matrix 3.12, 3.13, locked dependencies, explicit Python version in every command; frontends: lint, format, typecheck, unit, Cypress component and e2e, coverage, as upstream (codespell runs in pre-commit).
+- api, federation-api, bagel-cli, annotation-tool, query-tool workflows: run when the package, deploy/, testdata/ or the shared workflow changes. api deselects its service-dependent integration tests.
+- query-tool examples: diff against testdata/ on PRs (comment workflow), update PR on main.
+- link-check.yml: api linkspector and annotation-tool lychee with their own configs.
+- stale, scorecard and handle_external_pr ported from the org templates.
+---
+ .github/workflows/annotation-tool.yml         |  33 +++
+ .github/workflows/api.yml                     |  34 +++
+ .github/workflows/bagel-cli.yml               |  33 +++
+ .github/workflows/federation-api.yml          |  31 +++
+ .github/workflows/handle_external_pr.yml      |  38 +++
+ .github/workflows/link-check.yml              |  51 ++++
+ .../workflows/query-tool-examples-comment.yml |  93 +++++++
+ .github/workflows/query-tool-examples.yml     | 146 +++++++++++
+ .github/workflows/query-tool.yml              |  34 +++
+ .github/workflows/scorecard.yml               |  86 +++++++
+ .github/workflows/stale.yml                   |  33 +++
+ .github/workflows/test-node.yml               | 226 ++++++++++++++++++
+ .github/workflows/test-python.yml             |  61 +++++
+ 13 files changed, 899 insertions(+)
+ create mode 100644 .github/workflows/annotation-tool.yml
+ create mode 100644 .github/workflows/api.yml
+ create mode 100644 .github/workflows/bagel-cli.yml
+ create mode 100644 .github/workflows/federation-api.yml
+ create mode 100644 .github/workflows/handle_external_pr.yml
+ create mode 100644 .github/workflows/link-check.yml
+ create mode 100644 .github/workflows/query-tool-examples-comment.yml
+ create mode 100644 .github/workflows/query-tool-examples.yml
+ create mode 100644 .github/workflows/query-tool.yml
+ create mode 100644 .github/workflows/scorecard.yml
+ create mode 100644 .github/workflows/stale.yml
+ create mode 100644 .github/workflows/test-node.yml
+ create mode 100644 .github/workflows/test-python.yml
+
+diff --git a/.github/workflows/annotation-tool.yml b/.github/workflows/annotation-tool.yml
+new file mode 100644
+index 00000000..ab79f07b
+--- /dev/null
++++ b/.github/workflows/annotation-tool.yml
+@@ -0,0 +1,33 @@
++name: annotation-tool
++
++on:
++  push:
++    branches: [main]
++    paths:
++      - "packages/annotation-tool/**"
++      - "deploy/**"
++      - "testdata/**"
++      - ".github/workflows/annotation-tool.yml"
++      - ".github/workflows/test-node.yml"
++  pull_request:
++    paths:
++      - "packages/annotation-tool/**"
++      - "deploy/**"
++      - "testdata/**"
++      - ".github/workflows/annotation-tool.yml"
++      - ".github/workflows/test-node.yml"
++  workflow_dispatch:
++
++permissions:
++  contents: read
++
++jobs:
++  test:
++    uses: ./.github/workflows/test-node.yml
++    with:
++      package: annotation-tool
++      typecheck: true
++      unit: true
++      e2e-env: NB_DISABLE_CONFIG=false
++      coverage: true
++    secrets: inherit
+diff --git a/.github/workflows/api.yml b/.github/workflows/api.yml
+new file mode 100644
+index 00000000..3cfb2b93
+--- /dev/null
++++ b/.github/workflows/api.yml
+@@ -0,0 +1,34 @@
++name: api
++
++on:
++  push:
++    branches: [main]
++    paths:
++      - "packages/api/**"
++      - "deploy/**"
++      - "testdata/**"
++      - ".gitmodules"
++      - ".github/workflows/api.yml"
++      - ".github/workflows/test-python.yml"
++  pull_request:
++    paths:
++      - "packages/api/**"
++      - "deploy/**"
++      - "testdata/**"
++      - ".gitmodules"
++      - ".github/workflows/api.yml"
++      - ".github/workflows/test-python.yml"
++  workflow_dispatch:
++
++permissions:
++  contents: read
++
++jobs:
++  test:
++    uses: ./.github/workflows/test-python.yml
++    with:
++      package: api
++      # Tests marked `integration` need a running graph store (service-dependent): skipped
++      # during the migration, they move to the global integration test suite.
++      pytest-args: -m "not integration"
++    secrets: inherit
+diff --git a/.github/workflows/bagel-cli.yml b/.github/workflows/bagel-cli.yml
+new file mode 100644
+index 00000000..2ff7cd88
+--- /dev/null
++++ b/.github/workflows/bagel-cli.yml
+@@ -0,0 +1,33 @@
++name: bagel-cli
++
++on:
++  push:
++    branches: [main]
++    paths:
++      - "packages/bagel-cli/**"
++      - "deploy/**"
++      - "testdata/**"
++      - ".gitmodules"
++      - ".github/workflows/bagel-cli.yml"
++      - ".github/workflows/test-python.yml"
++  pull_request:
++    paths:
++      - "packages/bagel-cli/**"
++      - "deploy/**"
++      - "testdata/**"
++      - ".gitmodules"
++      - ".github/workflows/bagel-cli.yml"
++      - ".github/workflows/test-python.yml"
++  workflow_dispatch:
++
++permissions:
++  contents: read
++
++jobs:
++  test:
++    uses: ./.github/workflows/test-python.yml
++    with:
++      package: bagel-cli
++      pytest-args: -m "integration or not integration"
++      submodules: true
++    secrets: inherit
+diff --git a/.github/workflows/federation-api.yml b/.github/workflows/federation-api.yml
+new file mode 100644
+index 00000000..44ab233d
+--- /dev/null
++++ b/.github/workflows/federation-api.yml
+@@ -0,0 +1,31 @@
++name: federation-api
++
++on:
++  push:
++    branches: [main]
++    paths:
++      - "packages/federation-api/**"
++      - "deploy/**"
++      - "testdata/**"
++      - ".gitmodules"
++      - ".github/workflows/federation-api.yml"
++      - ".github/workflows/test-python.yml"
++  pull_request:
++    paths:
++      - "packages/federation-api/**"
++      - "deploy/**"
++      - "testdata/**"
++      - ".gitmodules"
++      - ".github/workflows/federation-api.yml"
++      - ".github/workflows/test-python.yml"
++  workflow_dispatch:
++
++permissions:
++  contents: read
++
++jobs:
++  test:
++    uses: ./.github/workflows/test-python.yml
++    with:
++      package: federation-api
++    secrets: inherit
+diff --git a/.github/workflows/handle_external_pr.yml b/.github/workflows/handle_external_pr.yml
+new file mode 100644
+index 00000000..a16814bb
+--- /dev/null
++++ b/.github/workflows/handle_external_pr.yml
+@@ -0,0 +1,38 @@
++name: Label pull requests from forks
++
++permissions:
++  contents: read
++
++on:
++  pull_request_target:
++    types: [opened]
++
++jobs:
++  handle_external_pr:
++    # Only run this entire workflow if the PR was opened from a forked repo
++    # The reasoning is that both bots and external contributors have to make
++    # a fork of the repo before they can open a PR because they don't have
++    # write access to the repo.
++    if: github.event.pull_request.head.repo.full_name != github.repository
++    runs-on: ubuntu-latest
++    permissions:
++      pull-requests: write
++
++    steps:
++      - name: Label pull request with "_community"
++        run: gh pr edit ${{ github.event.pull_request.number }} -R ${{ github.repository }} --add-label "_community"
++        env:
++          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
++
++  handle_precommit_pr:
++    # pre-commit.ci PR titles are conventional commits in the monorepo; match the author
++    if: github.event.pull_request.user.login == 'pre-commit-ci[bot]'
++    runs-on: ubuntu-latest
++    permissions:
++      pull-requests: write
++
++    steps:
++      - name: Label pull request with "_bot"
++        run: gh pr edit ${{ github.event.pull_request.number }} -R ${{ github.repository }} --add-label "_bot"
++        env:
++          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+diff --git a/.github/workflows/link-check.yml b/.github/workflows/link-check.yml
+new file mode 100644
+index 00000000..7e09b002
+--- /dev/null
++++ b/.github/workflows/link-check.yml
+@@ -0,0 +1,51 @@
++name: link check
++
++# Central link check. During the migration it runs each package's existing link checker
++# with its own config (a single monorepo-wide checker comes later):
++#   api: linkspector (packages/api/.linkspector.yml, README.md)
++#   annotation-tool: lychee (packages/annotation-tool/lychee.toml)
++on:
++  push:
++    branches: [main]
++  pull_request:
++  workflow_dispatch:
++
++permissions:
++  contents: read
++
++jobs:
++  api-linkspector:
++    name: api (linkspector)
++    runs-on: ubuntu-latest
++    defaults:
++      run:
++        working-directory: packages/api
++    steps:
++      - name: Checkout
++        uses: actions/checkout@v7
++        with:
++          persist-credentials: false
++      # Same workaround as upstream: puppeteer no longer downloads Chrome on install.
++      # See https://github.com/UmbrellaDocs/action-linkspector/issues/62
++      - name: Install Chrome for puppeteer
++        run: npx --yes puppeteer@^24 browsers install chrome
++      # The action runs from the repository root; run linkspector (the version the action
++      # installs) from the package folder so the package's config and README are used.
++      - name: Run linkspector
++        run: npx --yes @umbrelladocs/linkspector@0.4.7 check -c .linkspector.yml
++
++  annotation-tool-lychee:
++    name: annotation-tool (lychee)
++    runs-on: ubuntu-latest
++    steps:
++      - name: Checkout
++        uses: actions/checkout@v7
++        with:
++          persist-credentials: false
++      - name: Check links
++        uses: lycheeverse/lychee-action@v2
++        with:
++          workingDirectory: packages/annotation-tool
++          fail: true
++          # Release PR changelogs link to compare views of tags that only exist after merge.
++          args: --verbose --no-progress --exclude 'github\.com/[^/]+/[^/]+/compare/' '**/*.md' '**/*.html' '**/*.ts' '**/*.tsx'
+diff --git a/.github/workflows/query-tool-examples-comment.yml b/.github/workflows/query-tool-examples-comment.yml
+new file mode 100644
+index 00000000..c4f2fd40
+--- /dev/null
++++ b/.github/workflows/query-tool-examples-comment.yml
+@@ -0,0 +1,93 @@
++name: query-tool examples comment
++
++# Ported from query-tool's comment_examples_diff.yaml: posts the example results diff
++# computed by "query-tool examples" as a sticky PR comment (bot token).
++on:
++  workflow_run:
++    workflows: ["query-tool examples"]
++    types:
++      - completed
++
++permissions:
++  actions: read
++
++jobs:
++  post-comment:
++    runs-on: ubuntu-latest
++    if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success'
++    steps:
++      - name: Download artifact
++        uses: actions/download-artifact@v8
++        with:
++          name: examples-diff-artifact
++          run-id: ${{ github.event.workflow_run.id }}
++          github-token: ${{ secrets.GITHUB_TOKEN }}
++          path: diff-artifact
++
++      - name: Generate comment markdown
++        id: prep
++        run: |
++          echo "pr_number=$(cat diff-artifact/pr_number.txt)" >> "$GITHUB_OUTPUT"
++          COMMENT_FILE="diff-artifact/comment.md"
++
++          if [ "$(cat diff-artifact/has_diff.txt)" = "true" ]; then
++            {
++              echo ""
++              echo "⚠️ **Changes detected** in the query tool results TSV(s) compared to \`testdata/query-tool-results\`:"
++
++              if [ -s diff-artifact/results.diff ]; then
++                echo ""
++                echo "<details open>"
++                echo "<summary><b>📄 neurobagel-query-results_YYYYMMDDHHMMSS.tsv</b></summary>"
++                echo ""
++                echo '```diff'
++                if [ $(wc -c < diff-artifact/results.diff) -gt 25000 ]; then
++                  head -c 25000 diff-artifact/results.diff
++                  echo ""
++                  echo "... [Diff truncated due to size limit. View workflow artifacts for full diff]"
++                else
++                  cat diff-artifact/results.diff
++                fi
++                echo '```'
++                echo "</details>"
++              fi
++
++              if [ -s diff-artifact/results_uris.diff ]; then
++                echo ""
++                echo "<details open>"
++                echo "<summary><b>📄 neurobagel-query-results-with-URIs_YYYYMMDDHHMMSS.tsv</b></summary>"
++                echo ""
++                echo '```diff'
++                if [ $(wc -c < diff-artifact/results_uris.diff) -gt 25000 ]; then
++                  head -c 25000 diff-artifact/results_uris.diff
++                  echo ""
++                  echo "... [Diff truncated due to size limit. View workflow artifacts for full diff]"
++                else
++                  cat diff-artifact/results_uris.diff
++                fi
++                echo '```'
++                echo "</details>"
++              fi
++            } > "$COMMENT_FILE"
++          else
++            {
++              echo ""
++              echo "✅ **No changes detected** in the query tool results TSVs compared to \`testdata/query-tool-results\`."
++            } > "$COMMENT_FILE"
++          fi
++
++      - name: Generate a token
++        id: generate-token
++        uses: actions/create-github-app-token@v3
++        with:
++          app-id: ${{ vars.NB_BOT_ID }}
++          private-key: ${{ secrets.NB_BOT_KEY }}
++          owner: ${{ github.repository_owner }}
++
++      - name: Post or update PR comment
++        uses: marocchino/sticky-pull-request-comment@v3
++        with:
++          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
++          header: query-tool-examples-diff-preview
++          number: ${{ steps.prep.outputs.pr_number }}
++          path: diff-artifact/comment.md
+diff --git a/.github/workflows/query-tool-examples.yml b/.github/workflows/query-tool-examples.yml
+new file mode 100644
+index 00000000..a15435b8
+--- /dev/null
++++ b/.github/workflows/query-tool-examples.yml
+@@ -0,0 +1,146 @@
++name: query-tool examples
++
++# Ported from query-tool's generate_examples_diff.yaml and updated_examples.yaml.
++# The reference example results now live in testdata/query-tool-results/ (formerly the
++# neurobagel/neurobagel_examples repository).
++#   pull_request: regenerate the example TSVs and diff them against testdata/; the diff is
++#                 posted as a PR comment by query-tool-examples-comment.yml.
++#   push to main: regenerate the example TSVs and open a PR that updates testdata/.
++on:
++  pull_request:
++    paths:
++      - "packages/query-tool/**"
++      - "testdata/**"
++      - ".github/workflows/query-tool-examples.yml"
++  push:
++    branches: [main]
++    paths:
++      - "packages/query-tool/**"
++      - "testdata/**"
++      - ".github/workflows/query-tool-examples.yml"
++  workflow_dispatch:
++
++permissions:
++  contents: read
++
++jobs:
++  generate:
++    runs-on: ubuntu-latest
++    defaults:
++      run:
++        working-directory: packages/query-tool
++    steps:
++      - name: Checkout
++        uses: actions/checkout@v7
++        with:
++          persist-credentials: false
++
++      - name: Set up node env
++        uses: actions/setup-node@v7
++        with:
++          node-version: 20
++
++      - name: Create .env file
++        run: |
++          echo -e "NB_API_QUERY_URL=https://federate.neurobagel.org/\nNB_ENABLE_AUTH=true\nNB_QUERY_CLIENT_ID=mockclientid" > .env
++
++      - name: Build
++        run: npm ci && npm run build
++
++      - name: Run Cypress tests to generate example TSVs
++        uses: cypress-io/github-action@v7
++        with:
++          working-directory: packages/query-tool
++          install: false
++          wait-on: http://localhost:5173
++          start: npm run preview
++          spec: cypress/e2e/UpdateExamples.cy.ts
++          component: false
++
++      - name: Normalize generated TSV names
++        run: |
++          mv cypress/downloads/neurobagel-query-results_*.tsv cypress/downloads/neurobagel-query-results_YYYYMMDDHHMMSS.tsv
++          mv cypress/downloads/neurobagel-query-results-with-URIs_*.tsv cypress/downloads/neurobagel-query-results-with-URIs_YYYYMMDDHHMMSS.tsv
++
++      - name: Upload generated TSVs
++        uses: actions/upload-artifact@v7.0.1
++        with:
++          name: query-tool-results
++          path: packages/query-tool/cypress/downloads/*.tsv
++
++  diff:
++    if: github.event_name == 'pull_request'
++    needs: generate
++    runs-on: ubuntu-latest
++    steps:
++      - name: Checkout
++        uses: actions/checkout@v7
++        with:
++          persist-credentials: false
++
++      - name: Download generated TSVs
++        uses: actions/download-artifact@v8
++        with:
++          name: query-tool-results
++          path: generated
++
++      - name: Compute diff against testdata/
++        env:
++          PR_NUMBER: ${{ github.event.pull_request.number }}
++        run: |
++          mkdir -p diff-artifact
++          echo "$PR_NUMBER" > diff-artifact/pr_number.txt
++          ref=testdata/query-tool-results
++          diff -U 0 --label "reference/neurobagel-query-results_YYYYMMDDHHMMSS.tsv" --label "generated/neurobagel-query-results_YYYYMMDDHHMMSS.tsv" \
++            "$ref/neurobagel-query-results_YYYYMMDDHHMMSS.tsv" generated/neurobagel-query-results_YYYYMMDDHHMMSS.tsv \
++            > diff-artifact/results.diff || true
++          diff -U 0 --label "reference/neurobagel-query-results-with-URIs_YYYYMMDDHHMMSS.tsv" --label "generated/neurobagel-query-results-with-URIs_YYYYMMDDHHMMSS.tsv" \
++            "$ref/neurobagel-query-results-with-URIs_YYYYMMDDHHMMSS.tsv" generated/neurobagel-query-results-with-URIs_YYYYMMDDHHMMSS.tsv \
++            > diff-artifact/results_uris.diff || true
++          if [ -s diff-artifact/results.diff ] || [ -s diff-artifact/results_uris.diff ]; then
++            echo "true" > diff-artifact/has_diff.txt
++          else
++            echo "false" > diff-artifact/has_diff.txt
++          fi
++
++      - name: Upload diff artifact
++        uses: actions/upload-artifact@v7.0.1
++        with:
++          name: examples-diff-artifact
++          path: diff-artifact/
++
++  update-testdata:
++    if: github.event_name != 'pull_request'
++    needs: generate
++    runs-on: ubuntu-latest
++    steps:
++      - name: Generate a token
++        id: generate-token
++        uses: actions/create-github-app-token@v3
++        with:
++          app-id: ${{ vars.NB_BOT_ID }}
++          private-key: ${{ secrets.NB_BOT_KEY }}
++
++      - name: Checkout
++        uses: actions/checkout@v7
++        with:
++          token: ${{ steps.generate-token.outputs.token }}
++
++      - name: Download generated TSVs
++        uses: actions/download-artifact@v8
++        with:
++          name: query-tool-results
++          path: testdata/query-tool-results
++
++      - name: Create Pull Request
++        uses: peter-evans/create-pull-request@v8
++        with:
++          token: ${{ steps.generate-token.outputs.token }}
++          add-paths: testdata/query-tool-results/*.tsv
++          commit-message: "test: update query-tool example results in testdata/"
++          title: "test: update query-tool example results in testdata/"
++          body: "This PR updates `testdata/query-tool-results` with the latest results generated by the query tool."
++          base: main
++          branch: update-query-tool-results
++          committer: NeuroBagel Bot <neurobagel-bot[bot]@users.noreply.github.com>
++          labels: _bot
+diff --git a/.github/workflows/query-tool.yml b/.github/workflows/query-tool.yml
+new file mode 100644
+index 00000000..20dd07cb
+--- /dev/null
++++ b/.github/workflows/query-tool.yml
+@@ -0,0 +1,34 @@
++name: query-tool
++
++on:
++  push:
++    branches: [main]
++    paths:
++      - "packages/query-tool/**"
++      - "deploy/**"
++      - "testdata/**"
++      - ".github/workflows/query-tool.yml"
++      - ".github/workflows/test-node.yml"
++  pull_request:
++    paths:
++      - "packages/query-tool/**"
++      - "deploy/**"
++      - "testdata/**"
++      - ".github/workflows/query-tool.yml"
++      - ".github/workflows/test-node.yml"
++  workflow_dispatch:
++
++permissions:
++  contents: read
++
++jobs:
++  test:
++    uses: ./.github/workflows/test-node.yml
++    with:
++      package: query-tool
++      component-env: NB_API_QUERY_URL=https://federate.neurobagel.org/
++      e2e-env: |
++        NB_API_QUERY_URL=https://federate.neurobagel.org/
++        NB_ENABLE_AUTH=true
++        NB_QUERY_CLIENT_ID=mockclientid
++    secrets: inherit
+diff --git a/.github/workflows/scorecard.yml b/.github/workflows/scorecard.yml
+new file mode 100644
+index 00000000..1c440c86
+--- /dev/null
++++ b/.github/workflows/scorecard.yml
+@@ -0,0 +1,86 @@
++# This workflow uses actions that are not certified by GitHub. They are provided
++# by a third-party and are governed by separate terms of service, privacy
++# policy, and support documentation.
++
++name: Scorecard supply-chain security
++on:
++  # For Branch-Protection check. Only the default branch is supported. See
++  # https://github.com/ossf/scorecard/blob/main/docs/checks.md#branch-protection
++  branch_protection_rule:
++  # To guarantee Maintained check is occasionally updated. See
++  # https://github.com/ossf/scorecard/blob/main/docs/checks.md#maintained
++  schedule:
++    - cron: '30 5 * * 3'
++  push:
++    branches: [ "main" ]
++
++# Declare default permissions as read only.
++permissions: read-all
++
++jobs:
++  analysis:
++    name: Scorecard analysis
++    runs-on: ubuntu-latest
++    # `publish_results: true` only works when run from the default branch. conditional can be removed if disabled.
++    if: github.event.repository.default_branch == github.ref_name || github.event_name == 'pull_request'
++    permissions:
++      # Needed to upload the results to code-scanning dashboard.
++      security-events: write
++      # Needed to publish results and get a badge (see publish_results below).
++      id-token: write
++      # Uncomment the permissions below if installing in a private repository.
++      # contents: read
++      # actions: read
++
++    steps:
++      # Added to use Neurobagel Bot app token
++      - name: Generate a token
++        id: generate-token
++        uses: actions/create-github-app-token@v3
++        with:
++          app-id: ${{ vars.NB_BOT_ID }}
++          private-key: ${{ secrets.NB_BOT_KEY }}
++
++      - name: "Checkout code"
++        uses: actions/checkout@v7
++        with:
++          persist-credentials: false
++
++      - name: "Run analysis"
++        uses: ossf/scorecard-action@v2.5.0
++        with:
++          results_file: results.sarif
++          results_format: sarif
++          # (Optional) "write" PAT token. Uncomment the `repo_token` line below if:
++          # - you want to enable the Branch-Protection check on a *public* repository, or
++          # - you are installing Scorecard on a *private* repository
++          # To create the PAT, follow the steps in https://github.com/ossf/scorecard-action?tab=readme-ov-file#authentication-with-fine-grained-pat-optional.
++          repo_token: ${{ steps.generate-token.outputs.token }}
++
++          # Public repositories:
++          #   - Publish results to OpenSSF REST API for easy access by consumers
++          #   - Allows the repository to include the Scorecard badge.
++          #   - See https://github.com/ossf/scorecard-action#publishing-results.
++          # For private repositories:
++          #   - `publish_results` will always be set to `false`, regardless
++          #     of the value entered here.
++          publish_results: true
++
++          # (Optional) Uncomment file_mode if you have a .gitattributes with files marked export-ignore
++          # file_mode: git
++
++      # Upload the results as artifacts (optional). Commenting out will disable uploads of run results in SARIF
++      # format to the repository Actions tab.
++      - name: "Upload artifact"
++        uses: actions/upload-artifact@v7
++        with:
++          name: SARIF file
++          path: results.sarif
++          retention-days: 5
++
++      # Upload the results to GitHub's code scanning dashboard (optional).
++      # Commenting out will disable upload of results to your repo's Code Scanning dashboard
++      - name: "Upload to code-scanning"
++        uses: github/codeql-action/upload-sarif@v4
++        with:
++          sarif_file: results.sarif
+diff --git a/.github/workflows/stale.yml b/.github/workflows/stale.yml
+new file mode 100644
+index 00000000..4778ebe6
+--- /dev/null
++++ b/.github/workflows/stale.yml
+@@ -0,0 +1,33 @@
++name: 'Close stale issues and PRs'
++
++permissions:
++  contents: read
++
++on:
++  schedule:
++    - cron: '30 1 * * *'
++
++jobs:
++  stale:
++    runs-on: ubuntu-latest
++    permissions:
++      actions: write
++      issues: write
++      pull-requests: write
++
++    steps:
++      - uses: actions/stale@v11
++        with:
++          stale-issue-message: |
++            We want to keep our issues up to date and active. This issue hasn't seen any activity in the last 75 days.
++            We have applied the `_flag:stale` label to indicate that this issue should be reviewed again.
++            When you review, please reread the spec and then apply one of these three options:
++            - prioritize: apply the `flag:schedule` label to suggest moving this issue into the backlog now
++            - close: if the issue is no longer relevant, explain why (give others a chance to reply) and then close.
++            - archive: sometimes an issue has important information or ideas but we won't work on it soon. In this case
++            apply the `someday` label to show that this won't be prioritized. The stalebot will ignore issues with this
++            label in the future. Use sparingly!
++          days-before-stale: 75
++          days-before-close: -1
++          stale-issue-label: '_flag:stale'
++          exempt-issue-labels: 'Roadmap,Milestone,Epic,someday'
+diff --git a/.github/workflows/test-node.yml b/.github/workflows/test-node.yml
+new file mode 100644
+index 00000000..9249be89
+--- /dev/null
++++ b/.github/workflows/test-node.yml
+@@ -0,0 +1,226 @@
++name: test node (reusable)
++
++# Checks and tests one frontend package, as its upstream CI did.
++on:
++  workflow_call:
++    inputs:
++      package:
++        description: Folder under packages/
++        required: true
++        type: string
++      typecheck:
++        description: Run `npm run typecheck`
++        required: false
++        type: boolean
++        default: false
++      unit:
++        description: Run `npm run test:unit` (vitest)
++        required: false
++        type: boolean
++        default: false
++      component-env:
++        description: Contents of .env for the component tests (empty = no .env)
++        required: false
++        type: string
++        default: ""
++      e2e-env:
++        description: Contents of .env for the e2e tests (empty = no .env)
++        required: false
++        type: string
++        default: ""
++      coverage:
++        description: Collect and merge e2e, component and unit coverage, upload to Codecov
++        required: false
++        type: boolean
++        default: false
++
++permissions:
++  contents: read
++
++env:
++  NODE_VERSION: "20"
++
++jobs:
++  lint:
++    runs-on: ubuntu-latest
++    defaults:
++      run:
++        working-directory: packages/${{ inputs.package }}
++    steps:
++      - name: Checkout
++        uses: actions/checkout@v7
++        with:
++          persist-credentials: false
++      - name: Set up Node.js
++        uses: actions/setup-node@v7
++        with:
++          node-version: ${{ env.NODE_VERSION }}
++      - name: Install dependencies
++        run: npm ci
++      - name: Run TSC
++        if: inputs.typecheck
++        run: npm run typecheck
++      - name: Run ESLint
++        run: npm run lint:check
++      - name: Run Prettier check
++        run: npm run format:check
++
++  unit:
++    if: inputs.unit
++    runs-on: ubuntu-latest
++    defaults:
++      run:
++        working-directory: packages/${{ inputs.package }}
++    steps:
++      - name: Checkout
++        uses: actions/checkout@v7
++        with:
++          persist-credentials: false
++      - name: Set up Node.js
++        uses: actions/setup-node@v7
++        with:
++          node-version: ${{ env.NODE_VERSION }}
++      - name: Install dependencies
++        run: npm ci
++      - name: Run unit tests
++        run: npm run test:unit
++      - name: Upload unit coverage artifact
++        if: inputs.coverage
++        uses: actions/upload-artifact@v7.0.1
++        with:
++          name: unitCov
++          path: packages/${{ inputs.package }}/coverage
++
++  component:
++    runs-on: ubuntu-latest
++    defaults:
++      run:
++        working-directory: packages/${{ inputs.package }}
++    steps:
++      - name: Checkout
++        uses: actions/checkout@v7
++        with:
++          persist-credentials: false
++      - name: Set up Node.js
++        uses: actions/setup-node@v7
++        with:
++          node-version: ${{ env.NODE_VERSION }}
++      - name: Create .env file
++        if: inputs.component-env != ''
++        env:
++          ENV_CONTENT: ${{ inputs.component-env }}
++        run: printf '%s\n' "$ENV_CONTENT" > .env
++      - name: Build
++        run: |
++          npm ci
++          npm run build
++      - name: Run component tests
++        uses: cypress-io/github-action@v7
++        with:
++          working-directory: packages/${{ inputs.package }}
++          install: false
++          component: true
++      - name: Upload component coverage artifact
++        if: inputs.coverage
++        uses: actions/upload-artifact@v7.0.1
++        with:
++          name: compCov
++          path: packages/${{ inputs.package }}/coverage
++
++  e2e:
++    runs-on: ubuntu-latest
++    defaults:
++      run:
++        working-directory: packages/${{ inputs.package }}
++    steps:
++      - name: Checkout
++        uses: actions/checkout@v7
++        with:
++          persist-credentials: false
++      - name: Set up Node.js
++        uses: actions/setup-node@v7
++        with:
++          node-version: ${{ env.NODE_VERSION }}
++      - name: Create .env file
++        if: inputs.e2e-env != ''
++        env:
++          ENV_CONTENT: ${{ inputs.e2e-env }}
++        run: printf '%s\n' "$ENV_CONTENT" > .env
++      - name: Build
++        run: |
++          npm ci
++          npm run build
++      - name: Run end to end tests
++        uses: cypress-io/github-action@v7
++        with:
++          working-directory: packages/${{ inputs.package }}
++          install: false
++          start: npm run preview
++          wait-on: http://localhost:5173
++          component: false
++      - name: Upload e2e screenshots on failure
++        if: failure()
++        uses: actions/upload-artifact@v7.0.1
++        with:
++          name: e2e-screenshots
++          path: packages/${{ inputs.package }}/cypress/screenshots
++          retention-days: 30
++      - name: Upload e2e coverage artifact
++        if: inputs.coverage
++        uses: actions/upload-artifact@v7.0.1
++        with:
++          name: e2eCov
++          path: packages/${{ inputs.package }}/coverage
++
++  merge-coverage:
++    if: inputs.coverage
++    needs: [e2e, component, unit]
++    runs-on: ubuntu-latest
++    defaults:
++      run:
++        working-directory: packages/${{ inputs.package }}
++    steps:
++      - name: Checkout
++        uses: actions/checkout@v7
++        with:
++          persist-credentials: false
++      - name: Set up Node.js
++        uses: actions/setup-node@v7
++        with:
++          node-version: ${{ env.NODE_VERSION }}
++      - name: Setup
++        run: npm ci
++      - name: Download e2e coverage artifacts
++        uses: actions/download-artifact@v8
++        with:
++          name: e2eCov
++          path: packages/${{ inputs.package }}/e2eCov
++      - name: Download component coverage artifacts
++        uses: actions/download-artifact@v8
++        with:
++          name: compCov
++          path: packages/${{ inputs.package }}/compCov
++      - name: Download unit coverage artifacts
++        uses: actions/download-artifact@v8
++        with:
++          name: unitCov
++          path: packages/${{ inputs.package }}/unitCov
++      - name: Install nyc
++        run: npm install -g nyc
++      - name: Merge coverage reports
++        run: |
++          mkdir -p combined_coverage final_coverage
++          nyc merge e2eCov combined_coverage/e2e.json
++          nyc merge compCov combined_coverage/component.json
++          nyc merge unitCov combined_coverage/unit.json
++          nyc merge combined_coverage final_coverage/combined-coverage.json
++      - name: Generate final coverage report
++        run: nyc report --reporter=lcov --temp-dir final_coverage --report-dir ./coverage
++      - name: Upload coverage to Codecov
++        uses: codecov/codecov-action@v7
++        with:
++          token: ${{ secrets.CODECOV_TOKEN }}
++          files: packages/${{ inputs.package }}/coverage/lcov.info
++          flags: ${{ inputs.package }}
++          name: codecov-combined
++          fail_ci_if_error: true
+diff --git a/.github/workflows/test-python.yml b/.github/workflows/test-python.yml
+new file mode 100644
+index 00000000..442aafa4
+--- /dev/null
++++ b/.github/workflows/test-python.yml
+@@ -0,0 +1,61 @@
++name: test python (reusable)
++
++# Tests one Python package on the shared Python matrix, with its own locked dependencies.
++on:
++  workflow_call:
++    inputs:
++      package:
++        description: Folder under packages/
++        required: true
++        type: string
++      pytest-args:
++        description: Test selection (service-dependent tests are deselected here)
++        required: false
++        type: string
++        default: ""
++      submodules:
++        description: Check out the submodules (bagel-cli)
++        required: false
++        type: boolean
++        default: false
++
++permissions:
++  contents: read
++
++jobs:
++  pytest:
++    runs-on: ubuntu-latest
++    strategy:
++      fail-fast: false
++      matrix:
++        # Shared matrix for all Python packages (see migration/PLAN.md, Decisions).
++        python-version: ["3.12", "3.13"]
++    defaults:
++      run:
++        working-directory: packages/${{ inputs.package }}
++    steps:
++      - name: Checkout
++        uses: actions/checkout@v7
++        with:
++          # full history: hatch-vcs reads the package version from its tags
++          fetch-depth: 0
++          submodules: ${{ inputs.submodules }}
++          persist-credentials: false
++
++      - name: Set up Python ${{ matrix.python-version }} with uv
++        uses: astral-sh/setup-uv@v7
++        with:
++          python-version: ${{ matrix.python-version }}
++
++      - name: Install dependencies (locked)
++        run: uv sync --python ${{ matrix.python-version }} --group dev
++
++      - name: Test with pytest
++        run: uv run --python ${{ matrix.python-version }} pytest ${{ inputs.pytest-args }} --cov --cov-branch --cov-report=xml
++
++      - name: Upload results to Codecov
++        uses: codecov/codecov-action@v7
++        with:
++          token: ${{ secrets.CODECOV_TOKEN }}
++          flags: ${{ inputs.package }}
++          files: packages/${{ inputs.package }}/coverage.xml
+-- 
+2.39.5
+

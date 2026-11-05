@@ -1,0 +1,17 @@
+# Paths under packages/ that may differ from upstream, and why (path<TAB>reason).
+# Enforced by check-unchanged.sh in CI. Every entry must be required by the migration.
+
+packages/api/recipes	submodule gitlink replaced by a symlink to deploy/
+packages/api/neurobagel_examples	submodule gitlink replaced by a symlink to testdata/
+packages/query-tool/recipes	submodule gitlink replaced by a symlink to deploy/
+packages/query-tool/neurobagel_examples	submodule gitlink replaced by a symlink to testdata/
+packages/bagel-cli/tests/neurobagel_examples	submodule gitlink replaced by a symlink to testdata/
+packages/api/pyproject.toml	hatch-vcs: git root searched upward, api-v* tags here and v* tags in the old repository
+packages/federation-api/pyproject.toml	hatch-vcs: git root searched upward, federation-api-v* tags here and v* tags in the old repository
+packages/bagel-cli/pyproject.toml	hatch-vcs: git root searched upward, bagel-cli-v* tags here and v* tags in the old repository
+packages/bagel-cli/Dockerfile.nightly	nightly image: version passed as a build argument (no .git in the package build context)
+packages/api/README.md	README: "Working in the monorepo" section (how to clone, set up and test this tool in the monorepo)
+packages/federation-api/README.md	README: "Working in the monorepo" section (how to clone, set up and test this tool in the monorepo)
+packages/annotation-tool/README.md	README: "Working in the monorepo" section (how to clone, set up and test this tool in the monorepo)
+packages/bagel-cli/README.md	README: "Working in the monorepo" section (how to clone, set up and test this tool in the monorepo)
+packages/query-tool/README.md	README: "Working in the monorepo" section (how to clone, set up and test this tool in the monorepo)

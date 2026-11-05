@@ -1,0 +1,64 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 5 Nov 2026 17:00:50 +0000
+Subject: [PATCH 2/8] build: read Python package versions from the package's
+ own tags
+
+hatch-vcs (setuptools-scm) in api, federation-api and bagel-cli, with settings that work unchanged in the monorepo and in the old repository (which mirrors the package folder): the git root is searched above the package folder, and only the package's own tags count (<tag-prefix>-v<version> here, v<version> in the old repository).
+---
+ packages/api/pyproject.toml            | 5 +++++
+ packages/bagel-cli/pyproject.toml      | 5 +++++
+ packages/federation-api/pyproject.toml | 5 +++++
+ 3 files changed, 15 insertions(+)
+
+diff --git a/packages/api/pyproject.toml b/packages/api/pyproject.toml
+index a1a7e555..9574f76b 100644
+--- a/packages/api/pyproject.toml
++++ b/packages/api/pyproject.toml
+@@ -56,6 +56,11 @@ version-file = "app/_version.py"  # useful for accessing dynamically calculated
+ 
+ [tool.hatch.version.raw-options]
+ local_scheme = "no-local-version"  # do not append local version info to the version string to avoid PyPI upload errors
++# Monorepo and old repository: find the git root above this folder, and read this package's
++# tags (api-v<version> in the monorepo, v<version> in the old repository)
++search_parent_directories = true
++tag_regex = "^(?:api-)?v(?P<version>\\d+(?:\\.\\d+){0,2}[^\\+]*)(?:\\+.*)?$"
++git_describe_command = "git describe --dirty --tags --long --match 'api-v*' --match 'v*'"
+ 
+ [tool.black]
+ line-length = 79
+diff --git a/packages/bagel-cli/pyproject.toml b/packages/bagel-cli/pyproject.toml
+index 330f8b86..565e2c86 100644
+--- a/packages/bagel-cli/pyproject.toml
++++ b/packages/bagel-cli/pyproject.toml
+@@ -62,6 +62,11 @@ version-file = "bagel/_version.py"
+ 
+ [tool.hatch.version.raw-options]
+ local_scheme = "no-local-version"  # do not append local version info to the version string to avoid PyPI upload errors
++# Monorepo and old repository: find the git root above this folder, and read this package's
++# tags (bagel-cli-v<version> in the monorepo, v<version> in the old repository)
++search_parent_directories = true
++tag_regex = "^(?:bagel-cli-)?v(?P<version>\\d+(?:\\.\\d+){0,2}[^\\+]*)(?:\\+.*)?$"
++git_describe_command = "git describe --dirty --tags --long --match 'bagel-cli-v*' --match 'v*'"
+ 
+ [tool.black]
+ line-length = 79
+diff --git a/packages/federation-api/pyproject.toml b/packages/federation-api/pyproject.toml
+index 4ac6ad5c..b7e8d367 100644
+--- a/packages/federation-api/pyproject.toml
++++ b/packages/federation-api/pyproject.toml
+@@ -53,6 +53,11 @@ version-file = "app/_version.py"  # useful for accessing dynamically calculated
+ 
+ [tool.hatch.version.raw-options]
+ local_scheme = "no-local-version"  # do not append local version info to the version string to avoid PyPI upload errors
++# Monorepo and old repository: find the git root above this folder, and read this package's
++# tags (federation-api-v<version> in the monorepo, v<version> in the old repository)
++search_parent_directories = true
++tag_regex = "^(?:federation-api-)?v(?P<version>\\d+(?:\\.\\d+){0,2}[^\\+]*)(?:\\+.*)?$"
++git_describe_command = "git describe --dirty --tags --long --match 'federation-api-v*' --match 'v*'"
+ 
+ [tool.black]
+ line-length = 79
+-- 
+2.39.5
+

@@ -1,0 +1,130 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 5 Nov 2026 17:00:50 +0000
+Subject: [PATCH 5/8] ci: add release-please with one combined release PR and
+ GitHub Releases
+
+- release-please-config.json: one combined release PR (separate-pull-requests: false), per-package versions, changelogs, GitHub Releases and <component>-v<version> tags; breaking changes bump the minor version on 0.x. Python packages use the simple type (hatch-vcs reads the version from the tag), frontends the node type.
+- .release-please-manifest.json seeded from each package's last tag; bootstrap-sha is the last import commit.
+- release.yml: release-please with the bot app token (release PRs trigger CI); per-package release outputs for the publishing jobs.
+---
+ .github/workflows/release.yml | 53 +++++++++++++++++++++++++++++++++++
+ .release-please-manifest.json |  7 +++++
+ release-please-config.json    | 31 ++++++++++++++++++++
+ 3 files changed, 91 insertions(+)
+ create mode 100644 .github/workflows/release.yml
+ create mode 100644 .release-please-manifest.json
+ create mode 100644 release-please-config.json
+
+diff --git a/.github/workflows/release.yml b/.github/workflows/release.yml
+new file mode 100644
+index 00000000..adde04f1
+--- /dev/null
++++ b/.github/workflows/release.yml
+@@ -0,0 +1,53 @@
++name: release
++
++# release-please keeps one combined release PR for all packages (versions, changelogs).
++# Merging it makes release-please create one GitHub Release, and with it the tag
++# <component>-v<version>, per released package. Its outputs then start the publishing
++# jobs below.
++on:
++  push:
++    branches: [main]
++  workflow_dispatch:
++
++permissions:
++  contents: read
++
++concurrency:
++  group: release
++  cancel-in-progress: false
++
++jobs:
++  release-please:
++    runs-on: ubuntu-latest
++    outputs:
++      api: ${{ steps.rp.outputs['packages/api--release_created'] }}
++      api-version: ${{ steps.rp.outputs['packages/api--version'] }}
++      federation-api: ${{ steps.rp.outputs['packages/federation-api--release_created'] }}
++      federation-api-version: ${{ steps.rp.outputs['packages/federation-api--version'] }}
++      annotation-tool: ${{ steps.rp.outputs['packages/annotation-tool--release_created'] }}
++      annotation-tool-version: ${{ steps.rp.outputs['packages/annotation-tool--version'] }}
++      bagel-cli: ${{ steps.rp.outputs['packages/bagel-cli--release_created'] }}
++      bagel-cli-version: ${{ steps.rp.outputs['packages/bagel-cli--version'] }}
++      query-tool: ${{ steps.rp.outputs['packages/query-tool--release_created'] }}
++      query-tool-version: ${{ steps.rp.outputs['packages/query-tool--version'] }}
++    steps:
++      - name: Generate a token
++        id: generate-token
++        uses: actions/create-github-app-token@v3
++        with:
++          app-id: ${{ vars.NB_BOT_ID }}
++          private-key: ${{ secrets.NB_BOT_KEY }}
++
++      # The bot token makes release PRs trigger CI (GITHUB_TOKEN PRs do not).
++      - name: Run release-please
++        id: rp
++        uses: googleapis/release-please-action@v5
++        with:
++          token: ${{ steps.generate-token.outputs.token }}
++          config-file: release-please-config.json
++          manifest-file: .release-please-manifest.json
++
++      - name: Show outputs
++        env:
++          OUTPUTS: ${{ toJSON(steps.rp.outputs) }}
++        run: echo "$OUTPUTS"
+diff --git a/.release-please-manifest.json b/.release-please-manifest.json
+new file mode 100644
+index 00000000..9283140b
+--- /dev/null
++++ b/.release-please-manifest.json
+@@ -0,0 +1,7 @@
++{
++  "packages/api": "0.12.0",
++  "packages/federation-api": "0.10.0",
++  "packages/annotation-tool": "0.7.10",
++  "packages/bagel-cli": "0.11.6",
++  "packages/query-tool": "0.17.1"
++}
+diff --git a/release-please-config.json b/release-please-config.json
+new file mode 100644
+index 00000000..c133583d
+--- /dev/null
++++ b/release-please-config.json
+@@ -0,0 +1,31 @@
++{
++  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
++  "bootstrap-sha": "6b77c59f99a699e789f9f8070e251d42c301a37f",
++  "separate-pull-requests": false,
++  "bump-minor-pre-major": true,
++  "include-component-in-tag": true,
++  "include-v-in-tag": true,
++  "tag-separator": "-",
++  "packages": {
++    "packages/api": {
++      "release-type": "simple",
++      "component": "api"
++    },
++    "packages/federation-api": {
++      "release-type": "simple",
++      "component": "federation-api"
++    },
++    "packages/annotation-tool": {
++      "release-type": "node",
++      "component": "annotation-tool"
++    },
++    "packages/bagel-cli": {
++      "release-type": "simple",
++      "component": "bagel-cli"
++    },
++    "packages/query-tool": {
++      "release-type": "node",
++      "component": "query-tool"
++    }
++  }
++}
+-- 
+2.39.5
+
