@@ -1,0 +1,691 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 5 Nov 2026 17:00:50 +0000
+Subject: [PATCH 6/8] ci: add publishing workflows (images, PyPI, sites) with
+ configurable targets
+
+- docker-build.yml: builds a package's image from its own folder and Dockerfile (symlinks materialized in the build context), tags and labels with docker/metadata-action, pushes to IMAGE_REGISTRY/IMAGE_NAMESPACE (repository variables).
+- release.yml: for each package released by release-please, v<version> and latest images (api, federation-api, query-tool), bagel-cli-release.yml (PyPI upload, PYPI_REPOSITORY_URL selects the index, then the release image) and sites.yml.
+- sites.yml: annotation-tool (main + beta) and query-tool on Netlify, only when SITE_DEPLOY is true; also runnable by hand for a released version.
+- docker-nightly.yml: nightly images on push to main for the packages whose image inputs changed (dorny/paths-filter).
+- images-validation.yml (temporary, migration validation): manual build and push of every image with a validation-<sha> tag.
+- packages/bagel-cli/Dockerfile.nightly: one ARG so CI can pass the version computed from the bagel-cli-v* tags; the build context has no .git.
+---
+ .github/workflows/bagel-cli-release.yml |  85 ++++++++++++++
+ .github/workflows/docker-build.yml      | 148 ++++++++++++++++++++++++
+ .github/workflows/docker-nightly.yml    | 114 ++++++++++++++++++
+ .github/workflows/images-validation.yml |  61 ++++++++++
+ .github/workflows/release.yml           |  80 +++++++++++++
+ .github/workflows/sites.yml             | 121 +++++++++++++++++++
+ packages/bagel-cli/Dockerfile.nightly   |   3 +
+ 7 files changed, 612 insertions(+)
+ create mode 100644 .github/workflows/bagel-cli-release.yml
+ create mode 100644 .github/workflows/docker-build.yml
+ create mode 100644 .github/workflows/docker-nightly.yml
+ create mode 100644 .github/workflows/images-validation.yml
+ create mode 100644 .github/workflows/sites.yml
+
+diff --git a/.github/workflows/bagel-cli-release.yml b/.github/workflows/bagel-cli-release.yml
+new file mode 100644
+index 00000000..e070e1c0
+--- /dev/null
++++ b/.github/workflows/bagel-cli-release.yml
+@@ -0,0 +1,85 @@
++name: bagel-cli release
++
++# Called by the release workflow when release-please releases bagel-cli: build bagel (wheel and sdist, including the communities and
++# pipeline-catalog submodules) and upload it to PyPI, then build the release image, whose
++# Dockerfile installs that version from PyPI. The repository variable PYPI_REPOSITORY_URL
++# selects the index (unset: PyPI; TestPyPI for validation, with a matching PYPI_TOKEN).
++on:
++  workflow_call:
++    inputs:
++      version:
++        description: Released version (X.Y.Z)
++        required: true
++        type: string
++
++permissions:
++  contents: read
++
++jobs:
++  pypi:
++    runs-on: ubuntu-latest
++    outputs:
++      version: ${{ steps.version.outputs.version }}
++    defaults:
++      run:
++        working-directory: packages/bagel-cli
++    steps:
++      - name: Checkout
++        uses: actions/checkout@v7
++        with:
++          fetch-depth: 0
++          submodules: true
++          persist-credentials: false
++
++      - name: Set up Python 3.12
++        uses: actions/setup-python@v7
++        with:
++          python-version: "3.12"
++
++      - name: Install build & twine
++        run: python -m pip install build twine
++
++      - name: Build
++        run: python -m build
++
++      - name: Check the built version is the released version
++        id: version
++        env:
++          version: ${{ inputs.version }}
++        run: |
++          ls dist
++          test -f "dist/bagel-${version}-py3-none-any.whl"
++          test -f "dist/bagel-${version}.tar.gz"
++          echo "version=${version}" >> "$GITHUB_OUTPUT"
++
++      - name: Upload to PyPI
++        env:
++          TWINE_USERNAME: __token__
++          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
++          TWINE_REPOSITORY_URL: ${{ vars.PYPI_REPOSITORY_URL || 'https://upload.pypi.org/legacy/' }}
++        run: twine upload dist/*
++
++      - name: Wait until the version is installable from PyPI
++        if: vars.PYPI_REPOSITORY_URL == ''
++        env:
++          VERSION: ${{ steps.version.outputs.version }}
++        run: |
++          for _ in $(seq 1 30); do
++            if python -m pip index versions bagel 2>/dev/null | grep -F "$VERSION" >/dev/null; then exit 0; fi
++            sleep 10
++          done
++          echo "::error::bagel $VERSION did not appear on PyPI"; exit 1
++
++  docker:
++    needs: pypi
++    permissions:
++      contents: read
++      packages: write
++    uses: ./.github/workflows/docker-build.yml
++    with:
++      package: bagel-cli
++      image: bagelcli
++      tags: |
++        type=raw,value=v${{ needs.pypi.outputs.version }}
++        type=raw,value=latest
++    secrets: inherit
+diff --git a/.github/workflows/docker-build.yml b/.github/workflows/docker-build.yml
+new file mode 100644
+index 00000000..81e49c24
+--- /dev/null
++++ b/.github/workflows/docker-build.yml
+@@ -0,0 +1,148 @@
++name: docker build (reusable)
++
++# Builds one package's image from its own folder with its existing Dockerfile and pushes
++# it to ${IMAGE_REGISTRY}/${IMAGE_NAMESPACE}/<image> (repository variables: ghcr during
++# validation, Docker Hub in production).
++on:
++  workflow_call:
++    inputs:
++      package:
++        description: Folder under packages/ (the build context)
++        required: true
++        type: string
++      image:
++        description: Image name (published artifact name, e.g. api, federation_api)
++        required: true
++        type: string
++      dockerfile:
++        description: Dockerfile, relative to the package folder
++        required: false
++        type: string
++        default: Dockerfile
++      tags:
++        description: Image tags as docker/metadata-action rules, one per line (e.g. type=raw,value=nightly)
++        required: true
++        type: string
++      platforms:
++        required: false
++        type: string
++        default: linux/arm64, linux/amd64
++      submodules:
++        description: Check out submodules (bagel-cli data)
++        required: false
++        type: boolean
++        default: false
++      hatch-version-arg:
++        description: Compute the package version with hatch-vcs and pass it as this build argument
++        required: false
++        type: string
++        default: ""
++      package-json-version:
++        description: Set package.json "version" to this value before building (query-tool); {short-sha} is replaced by the commit's short SHA
++        required: false
++        type: string
++        default: ""
++
++permissions:
++  contents: read
++  packages: write
++
++jobs:
++  build:
++    runs-on: ubuntu-latest
++    steps:
++      - name: Check registry configuration
++        env:
++          REGISTRY: ${{ vars.IMAGE_REGISTRY }}
++          NAMESPACE: ${{ vars.IMAGE_NAMESPACE }}
++        run: |
++          if [ -z "$REGISTRY" ] || [ -z "$NAMESPACE" ]; then
++            echo "::error::Set the repository variables IMAGE_REGISTRY and IMAGE_NAMESPACE"; exit 1
++          fi
++
++      - name: Checkout
++        uses: actions/checkout@v7
++        with:
++          fetch-depth: 0
++          submodules: ${{ inputs.submodules }}
++          persist-credentials: false
++
++      # The package's symlinks into deploy/ and testdata/ (former submodules) would dangle
++      # inside the build context (query-tool's build type-checks a Cypress spec that imports
++      # from neurobagel_examples). Replace them with copies, as upstream's context had the
++      # submodule contents.
++      - name: Materialize symlinks in the build context
++        working-directory: packages/${{ inputs.package }}
++        run: |
++          git ls-files -s . | awk '$1=="120000" {print $4}' | while read -r link; do
++            target="$(readlink -f "$link")"
++            rm "$link"
++            cp -R "$target" "$link"
++            echo "materialized $link"
++          done
++
++      - name: Set up uv
++        if: inputs.hatch-version-arg != ''
++        uses: astral-sh/setup-uv@v7
++
++      - name: Compute the version with hatch-vcs
++        id: hatch
++        if: inputs.hatch-version-arg != ''
++        working-directory: packages/${{ inputs.package }}
++        run: |
++          uvx --quiet --with hatch-vcs hatchling version > /tmp/version
++          echo "version=$(cat /tmp/version)" >> "$GITHUB_OUTPUT"
++          echo "version: $(cat /tmp/version)"
++
++      - name: Update package.json version
++        if: inputs.package-json-version != ''
++        working-directory: packages/${{ inputs.package }}
++        env:
++          VERSION: ${{ inputs.package-json-version }}
++        run: |
++          VERSION="${VERSION//\{short-sha\}/${GITHUB_SHA::7}}"
++          jq ".version = \"${VERSION}\"" package.json > tmp.$$.json && mv tmp.$$.json package.json
++          cat package.json
++
++      # Tags as given; OCI labels (created, revision, source, version = first tag, ...) as
++      # upstream's release images had them.
++      - name: Image name, tags and labels
++        id: meta
++        uses: docker/metadata-action@v6
++        with:
++          images: ${{ vars.IMAGE_REGISTRY }}/${{ vars.IMAGE_NAMESPACE }}/${{ inputs.image }}
++          tags: ${{ inputs.tags }}
++          flavor: latest=false
++
++      - name: Login to the registry (Docker Hub)
++        if: vars.IMAGE_REGISTRY == 'docker.io'
++        uses: docker/login-action@v4
++        with:
++          username: ${{ secrets.DOCKERHUB_USERNAME }}
++          password: ${{ secrets.DOCKERHUB_TOKEN }}
++
++      - name: Login to the registry (ghcr)
++        if: vars.IMAGE_REGISTRY == 'ghcr.io'
++        uses: docker/login-action@v4
++        with:
++          registry: ghcr.io
++          username: ${{ github.actor }}
++          password: ${{ secrets.GITHUB_TOKEN }}
++
++      - name: Set up QEMU
++        uses: docker/setup-qemu-action@v4
++
++      - name: Set up Docker Buildx
++        uses: docker/setup-buildx-action@v4
++
++      - name: Build and push
++        uses: docker/build-push-action@v7
++        with:
++          platforms: ${{ inputs.platforms }}
++          context: packages/${{ inputs.package }}
++          file: packages/${{ inputs.package }}/${{ inputs.dockerfile }}
++          push: true
++          tags: ${{ steps.meta.outputs.tags }}
++          labels: ${{ steps.meta.outputs.labels }}
++          build-args: |
++            ${{ inputs.hatch-version-arg != '' && format('{0}={1}', inputs.hatch-version-arg, steps.hatch.outputs.version) || '' }}
+diff --git a/.github/workflows/docker-nightly.yml b/.github/workflows/docker-nightly.yml
+new file mode 100644
+index 00000000..7d80265b
+--- /dev/null
++++ b/.github/workflows/docker-nightly.yml
+@@ -0,0 +1,114 @@
++name: docker nightly
++
++# On every push to main: build and push the `nightly` image of each package whose image
++# inputs changed (its folder, the shared folders its symlinks point to, the image
++# workflows). workflow_dispatch builds all.
++on:
++  push:
++    branches: [main]
++  workflow_dispatch:
++
++permissions:
++  contents: read
++
++jobs:
++  changes:
++    if: github.event_name == 'push'
++    runs-on: ubuntu-latest
++    outputs:
++      api: ${{ steps.filter.outputs.api }}
++      federation-api: ${{ steps.filter.outputs.federation-api }}
++      bagel-cli: ${{ steps.filter.outputs.bagel-cli }}
++      query-tool: ${{ steps.filter.outputs.query-tool }}
++    steps:
++      - name: Checkout
++        uses: actions/checkout@v7
++        with:
++          persist-credentials: false
++
++      - name: Changed images
++        id: filter
++        uses: dorny/paths-filter@v4
++        with:
++          filters: |
++            api:
++              - '.github/workflows/docker-nightly.yml'
++              - '.github/workflows/docker-build.yml'
++              - 'packages/api/**'
++              - 'deploy/**'
++              - 'testdata/**'
++            federation-api:
++              - '.github/workflows/docker-nightly.yml'
++              - '.github/workflows/docker-build.yml'
++              - 'packages/federation-api/**'
++            bagel-cli:
++              - '.github/workflows/docker-nightly.yml'
++              - '.github/workflows/docker-build.yml'
++              - 'packages/bagel-cli/**'
++              - 'testdata/**'
++              - '.gitmodules'
++            query-tool:
++              - '.github/workflows/docker-nightly.yml'
++              - '.github/workflows/docker-build.yml'
++              - 'packages/query-tool/**'
++              - 'deploy/**'
++              - 'testdata/**'
++
++  api:
++    needs: changes
++    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.changes.outputs.api == 'true') }}
++    permissions:
++      contents: read
++      packages: write
++    uses: ./.github/workflows/docker-build.yml
++    with:
++      package: api
++      image: api
++      tags: type=raw,value=nightly
++    secrets: inherit
++
++  federation-api:
++    needs: changes
++    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.changes.outputs.federation-api == 'true') }}
++    permissions:
++      contents: read
++      packages: write
++    uses: ./.github/workflows/docker-build.yml
++    with:
++      package: federation-api
++      image: federation_api
++      tags: type=raw,value=nightly
++    secrets: inherit
++
++  # Built from source with Dockerfile.nightly; the version comes from the bagel-cli tags.
++  bagel-cli:
++    needs: changes
++    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.changes.outputs.bagel-cli == 'true') }}
++    permissions:
++      contents: read
++      packages: write
++    uses: ./.github/workflows/docker-build.yml
++    with:
++      package: bagel-cli
++      image: bagelcli
++      dockerfile: Dockerfile.nightly
++      tags: type=raw,value=nightly
++      submodules: true
++      hatch-version-arg: SETUPTOOLS_SCM_PRETEND_VERSION
++    secrets: inherit
++
++  # As upstream: amd64 only; the app shows build:<short sha> as its version.
++  query-tool:
++    needs: changes
++    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.changes.outputs.query-tool == 'true') }}
++    permissions:
++      contents: read
++      packages: write
++    uses: ./.github/workflows/docker-build.yml
++    with:
++      package: query-tool
++      image: query_tool
++      tags: type=raw,value=nightly
++      platforms: linux/amd64
++      package-json-version: build:{short-sha}
++    secrets: inherit
+diff --git a/.github/workflows/images-validation.yml b/.github/workflows/images-validation.yml
+new file mode 100644
+index 00000000..2439d163
+--- /dev/null
++++ b/.github/workflows/images-validation.yml
+@@ -0,0 +1,61 @@
++name: images validation
++
++# TEMPORARY (migration): for Phase 5 validation; remove together with migration/ (plan
++# step 23).
++#
++# Manual: build every image and push it to the configured registry with a non-release tag
++# (validation-<short sha>), to validate the image builds without touching nightly, latest
++# or version tags.
++on:
++  workflow_dispatch:
++
++permissions:
++  contents: read
++  packages: write
++
++jobs:
++  api:
++    uses: ./.github/workflows/docker-build.yml
++    with:
++      package: api
++      image: api
++      tags: type=sha,prefix=validation-
++    secrets: inherit
++
++  federation-api:
++    uses: ./.github/workflows/docker-build.yml
++    with:
++      package: federation-api
++      image: federation_api
++      tags: type=sha,prefix=validation-
++    secrets: inherit
++
++  bagel-cli-nightly:
++    uses: ./.github/workflows/docker-build.yml
++    with:
++      package: bagel-cli
++      image: bagelcli
++      dockerfile: Dockerfile.nightly
++      tags: type=sha,prefix=validation-
++      submodules: true
++      hatch-version-arg: SETUPTOOLS_SCM_PRETEND_VERSION
++    secrets: inherit
++
++  # The release Dockerfile installs bagel from PyPI.
++  bagel-cli-release:
++    uses: ./.github/workflows/docker-build.yml
++    with:
++      package: bagel-cli
++      image: bagelcli
++      tags: type=sha,prefix=validation-,suffix=-release
++    secrets: inherit
++
++  query-tool:
++    uses: ./.github/workflows/docker-build.yml
++    with:
++      package: query-tool
++      image: query_tool
++      tags: type=sha,prefix=validation-
++      platforms: linux/amd64
++      package-json-version: build:{short-sha}
++    secrets: inherit
+diff --git a/.github/workflows/release.yml b/.github/workflows/release.yml
+index adde04f1..8b670539 100644
+--- a/.github/workflows/release.yml
++++ b/.github/workflows/release.yml
+@@ -51,3 +51,83 @@ jobs:
+         env:
+           OUTPUTS: ${{ toJSON(steps.rp.outputs) }}
+         run: echo "$OUTPUTS"
++
++  # --- publishing: images v<version> and latest, bagel on PyPI, the sites ----------------
++  # Reruns: "Re-run failed jobs" on this workflow run; sites.yml can also be run by hand.
++  api-image:
++    needs: release-please
++    if: needs.release-please.outputs.api == 'true'
++    permissions:
++      contents: read
++      packages: write
++    uses: ./.github/workflows/docker-build.yml
++    with:
++      package: api
++      image: api
++      tags: |
++        type=raw,value=v${{ needs.release-please.outputs.api-version }}
++        type=raw,value=latest
++    secrets: inherit
++
++  federation-api-image:
++    needs: release-please
++    if: needs.release-please.outputs.federation-api == 'true'
++    permissions:
++      contents: read
++      packages: write
++    uses: ./.github/workflows/docker-build.yml
++    with:
++      package: federation-api
++      image: federation_api
++      tags: |
++        type=raw,value=v${{ needs.release-please.outputs.federation-api-version }}
++        type=raw,value=latest
++    secrets: inherit
++
++  # The app shows its version; upstream set package.json's version to the release tag.
++  query-tool-image:
++    needs: release-please
++    if: needs.release-please.outputs.query-tool == 'true'
++    permissions:
++      contents: read
++      packages: write
++    uses: ./.github/workflows/docker-build.yml
++    with:
++      package: query-tool
++      image: query_tool
++      tags: |
++        type=raw,value=v${{ needs.release-please.outputs.query-tool-version }}
++        type=raw,value=latest
++      platforms: linux/amd64
++      package-json-version: v${{ needs.release-please.outputs.query-tool-version }}
++    secrets: inherit
++
++  # PyPI, then the release image (which installs that version from PyPI)
++  bagel-cli:
++    needs: release-please
++    if: needs.release-please.outputs.bagel-cli == 'true'
++    permissions:
++      contents: read
++      packages: write
++    uses: ./.github/workflows/bagel-cli-release.yml
++    with:
++      version: ${{ needs.release-please.outputs.bagel-cli-version }}
++    secrets: inherit
++
++  annotation-tool-site:
++    needs: release-please
++    if: needs.release-please.outputs.annotation-tool == 'true'
++    uses: ./.github/workflows/sites.yml
++    with:
++      package: annotation-tool
++      version: ${{ needs.release-please.outputs.annotation-tool-version }}
++    secrets: inherit
++
++  query-tool-site:
++    needs: release-please
++    if: needs.release-please.outputs.query-tool == 'true'
++    uses: ./.github/workflows/sites.yml
++    with:
++      package: query-tool
++      version: ${{ needs.release-please.outputs.query-tool-version }}
++    secrets: inherit
+diff --git a/.github/workflows/sites.yml b/.github/workflows/sites.yml
+new file mode 100644
+index 00000000..270ff509
+--- /dev/null
++++ b/.github/workflows/sites.yml
+@@ -0,0 +1,121 @@
++name: sites
++
++# Static sites on Netlify (formerly GitHub Pages; one repository can serve only one Pages
++# site). Called by the release workflow when release-please releases one of the frontends,
++# or run manually for a released version. Deploys only when the repository variable
++# SITE_DEPLOY is "true".
++#   annotation-tool -> annotate.neurobagel.org (NETLIFY_ANNOTATE_SITE_ID) and the beta
++#                      site (NETLIFY_PROD_SITE_ID, as upstream's Netlify job)
++#   query-tool      -> query.neurobagel.org (NETLIFY_QUERY_SITE_ID)
++on:
++  workflow_call:
++    inputs:
++      package:
++        description: annotation-tool or query-tool
++        required: true
++        type: string
++      version:
++        description: Released version (X.Y.Z)
++        required: true
++        type: string
++  workflow_dispatch:
++    inputs:
++      package:
++        description: Package to deploy
++        required: true
++        type: choice
++        options: [annotation-tool, query-tool]
++      version:
++        description: Released version to deploy (X.Y.Z; the tag <package>-vX.Y.Z must exist)
++        required: true
++        type: string
++
++permissions:
++  contents: read
++
++concurrency:
++  group: sites-${{ inputs.package }}
++  cancel-in-progress: true
++
++jobs:
++  annotation-tool:
++    if: inputs.package == 'annotation-tool' && vars.SITE_DEPLOY == 'true'
++    runs-on: ubuntu-latest
++    strategy:
++      matrix:
++        site: [main, beta]
++    defaults:
++      run:
++        working-directory: packages/annotation-tool
++    steps:
++      - name: Checkout
++        uses: actions/checkout@v7
++        with:
++          ref: ${{ inputs.package }}-v${{ inputs.version }}
++          persist-credentials: false
++      - name: Set up Node
++        uses: actions/setup-node@v7
++        with:
++          node-version: 20
++      - name: Install dependencies
++        run: npm ci
++      # main: upstream's GitHub Pages build; beta: upstream's Netlify build
++      - name: Build (main)
++        if: matrix.site == 'main'
++        run: npm run build
++        env:
++          NB_ANALYTICS: true
++      - name: Build (beta)
++        if: matrix.site == 'beta'
++        run: npm run build
++        env:
++          NB_ANALYTICS: true
++          NB_DISABLE_CONFIG: false
++          NB_GOOGLE_APPS_SCRIPT_URL: ${{ secrets.NB_GOOGLE_APPS_SCRIPT_URL }}
++          SECRETS_SCAN_OMIT_KEYS: NB_GOOGLE_APPS_SCRIPT_URL
++      - name: Deploy to Netlify
++        run: npx netlify-cli deploy --no-build --dir=dist --prod
++        env:
++          NETLIFY_SITE_ID: ${{ matrix.site == 'main' && secrets.NETLIFY_ANNOTATE_SITE_ID || secrets.NETLIFY_PROD_SITE_ID }}
++          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
++
++  query-tool:
++    if: inputs.package == 'query-tool' && vars.SITE_DEPLOY == 'true'
++    runs-on: ubuntu-latest
++    defaults:
++      run:
++        working-directory: packages/query-tool
++    steps:
++      - name: Checkout
++        uses: actions/checkout@v7
++        with:
++          ref: ${{ inputs.package }}-v${{ inputs.version }}
++          persist-credentials: false
++      - name: Add prod scripts
++        run: |
++          add_script='<script async src="https://w.appzi.io/w.js?token=YVTHd"></script><script defer data-domain="query.neurobagel.org" src="https://plausible.neurobagel.org/js/script.js"></script>'
++          # Need to use single quotes around sed to avoid ! to be interpreted as a history expansion character
++          sed -i 's|<!-- REPLACE_ME_NB_QUERY_HEADER_SCRIPT_REPLACE_ME -->|'"${add_script}"'|' index.html
++      # The app displays its version; upstream set it from the release tag (vX.Y.Z)
++      - name: Set release version
++        env:
++          VERSION: ${{ inputs.version }}
++        run: |
++          release_version="v${VERSION}"
++          jq ".version = \"$release_version\"" package.json > tmp.$$.json && mv tmp.$$.json package.json
++      - name: Set up Node
++        uses: actions/setup-node@v7
++        with:
++          node-version: 20
++      - name: Create .env file
++        run: |
++          echo -e "NB_API_QUERY_URL=https://federate.neurobagel.org/" > .env
++      - name: Install dependencies
++        run: npm ci
++      - name: Build
++        run: npm run build
++      - name: Deploy to Netlify
++        run: npx netlify-cli deploy --no-build --dir=dist --prod
++        env:
++          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_QUERY_SITE_ID }}
++          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+diff --git a/packages/bagel-cli/Dockerfile.nightly b/packages/bagel-cli/Dockerfile.nightly
+index c9a92357..0f4e397a 100644
+--- a/packages/bagel-cli/Dockerfile.nightly
++++ b/packages/bagel-cli/Dockerfile.nightly
+@@ -5,6 +5,9 @@ WORKDIR /app
+ 
+ COPY . /app
+ 
++# Monorepo: the build context has no .git; CI passes the version from the bagel-cli-v* tags
++ARG SETUPTOOLS_SCM_PRETEND_VERSION
++
+ # Git is needed for VCS dynamic versioning
+ RUN apt-get update && apt-get install git --assume-yes
+ 
+-- 
+2.39.5
+

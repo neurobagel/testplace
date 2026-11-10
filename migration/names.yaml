@@ -1,0 +1,69 @@
+# Single map of names for the Neurobagel monorepo.
+# Scripts (import.sh, verify.sh, gen-commit-rewrites.py) read this file; nothing else invents names.
+#
+# Per package:
+#   repo        upstream repository name under `org`
+#   dir         directory under packages/
+#   tag_prefix  prefix of imported and future tags: <tag_prefix>-v<version>
+#               (also the release-please component name)
+#   artifacts   published artifact names (independent of dir and tag_prefix)
+#   symlinks    upstream submodule paths (relative to the package) replaced by a
+#               symlink to a shared data directory (key of `data`)
+#   submodules  upstream submodule paths (relative to the package) kept as
+#               submodules, declared in the root .gitmodules
+
+org: neurobagel
+
+packages:
+  - repo: api
+    dir: api
+    tag_prefix: api
+    artifacts:
+      docker: neurobagel/api
+    symlinks:
+      recipes: deploy
+      neurobagel_examples: testdata
+
+  - repo: federation-api
+    dir: federation-api
+    tag_prefix: federation-api
+    artifacts:
+      docker: neurobagel/federation_api
+
+  - repo: annotation-tool
+    dir: annotation-tool
+    tag_prefix: annotation-tool
+    artifacts:
+      site: annotate.neurobagel.org
+
+  - repo: bagel-cli
+    dir: bagel-cli
+    tag_prefix: bagel-cli
+    artifacts:
+      pypi: bagel
+      docker: neurobagel/bagelcli
+    symlinks:
+      tests/neurobagel_examples: testdata
+    submodules:
+      - bagel/communities
+      - bagel/pipeline-catalog
+      - tests/bids-examples
+
+  - repo: query-tool
+    dir: query-tool
+    tag_prefix: query-tool
+    artifacts:
+      docker: neurobagel/query_tool
+      site: query.neurobagel.org
+    symlinks:
+      recipes: deploy
+      neurobagel_examples: testdata
+
+# Shared data, copied in as plain files (HEAD of `ref`), no history.
+data:
+  deploy:
+    repo: recipes
+    ref: main
+  testdata:
+    repo: neurobagel_examples
+    ref: main
