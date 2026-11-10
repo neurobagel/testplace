@@ -39,3 +39,4 @@ See comments in the `.env` file for more information.
     ```
 
 A log file `DEPLOY.log` will be automatically created under `scripts/logs/` with a copy of the STDOUT from the automatic deployment process.
+<!-- rehearsal test: multi-tool PR -->
