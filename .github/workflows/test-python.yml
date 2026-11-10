@@ -59,3 +59,4 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: ${{ inputs.package }}
           files: packages/${{ inputs.package }}/coverage.xml
+# rehearsal test: shared workflow PR
