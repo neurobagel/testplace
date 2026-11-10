@@ -1,0 +1,446 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 5 Nov 2026 17:00:50 +0000
+Subject: [PATCH 3/8] ci: add root pre-commit hooks, PR title check, release
+ preview, dependabot
+
+- .pre-commit-config.yaml runs each package's existing linters with explicit config paths, scoped to the package folder (codespell for all five packages); frontend lint-staged checks and the post-merge npm ci hook become pre-commit hooks; pre-commit.ci settings.
+- pr-checks.yml: conventional PR titles (action-semantic-pull-request, optional package scope) and an informational release-please dry run in the job summary.
+- .github/dependabot.yml replaces the per-repo copies; adds grouped Docker base image updates (no major or python minor updates) and groups the submodule updates.
+- Root pull request template.
+---
+ .github/dependabot.yml           |  84 +++++++++++++
+ .github/pull_request_template.md |  35 ++++++
+ .github/workflows/pr-checks.yml  |  72 +++++++++++
+ .pre-commit-config.yaml          | 207 +++++++++++++++++++++++++++++++
+ 4 files changed, 398 insertions(+)
+ create mode 100644 .github/dependabot.yml
+ create mode 100644 .github/pull_request_template.md
+ create mode 100644 .github/workflows/pr-checks.yml
+ create mode 100644 .pre-commit-config.yaml
+
+diff --git a/.github/dependabot.yml b/.github/dependabot.yml
+new file mode 100644
+index 00000000..a121e3bb
+--- /dev/null
++++ b/.github/dependabot.yml
+@@ -0,0 +1,84 @@
++# Dependabot for the monorepo (replaces the per-repo copies of the org template, which
++# stay in packages/*/.github as dead code).
++#
++# Same policy as upstream: GitHub Actions and submodules weekly; npm minor/patch updates
++# grouped, majors ignored; Python (uv) security updates only (version updates off via
++# open-pull-requests-limit: 0). New: Docker base images, grouped, with major updates and
++# Python minor updates (python:3.10 -> 3.13) ignored; submodule updates grouped.
++# Every entry uses the commit-message prefix "build", so dependabot PR titles pass the PR
++# title check and release nothing.
++
++version: 2
++updates:
++  - package-ecosystem: "github-actions"
++    directory: "/"
++    schedule:
++      interval: "weekly"
++    commit-message:
++      prefix: "build"
++    labels: ["_bot", "dependencies"]
++
++  # bagel-cli's data submodules (root .gitmodules)
++  - package-ecosystem: "gitsubmodule"
++    directory: "/"
++    schedule:
++      interval: "weekly"
++    groups:
++      bagel-cli-submodules:
++        patterns: ["*"]
++    commit-message:
++      prefix: "build"
++    labels: ["_bot", "dependencies"]
++
++  - package-ecosystem: "npm"
++    directories:
++      - "/packages/annotation-tool"
++      - "/packages/query-tool"
++    schedule:
++      interval: "weekly"
++    groups:
++      production-dependencies:
++        applies-to: version-updates
++        dependency-type: "production"
++      development-dependencies:
++        applies-to: version-updates
++        dependency-type: "development"
++    ignore:
++      - dependency-name: "*"
++        update-types: ["version-update:semver-major"]
++    commit-message:
++      prefix: "build"
++    labels: ["_bot", "dependencies"]
++
++  - package-ecosystem: "uv"
++    directories:
++      - "/packages/api"
++      - "/packages/federation-api"
++      - "/packages/bagel-cli"
++    schedule:
++      interval: "weekly"
++    open-pull-requests-limit: 0
++    commit-message:
++      prefix: "build"
++    labels: ["_bot", "dependencies"]
++
++  - package-ecosystem: "docker"
++    directories:
++      - "/packages/api"
++      - "/packages/federation-api"
++      - "/packages/bagel-cli"
++      - "/packages/query-tool"
++    schedule:
++      interval: "weekly"
++    groups:
++      docker-base-images:
++        patterns: ["*"]
++    ignore:
++      - dependency-name: "*"
++        update-types: ["version-update:semver-major"]
++      # python:3.10 -> 3.13 counts as a minor update but changes the images' runtime Python
++      - dependency-name: "python"
++        update-types: ["version-update:semver-minor"]
++    commit-message:
++      prefix: "build"
++    labels: ["_bot", "dependencies"]
+diff --git a/.github/pull_request_template.md b/.github/pull_request_template.md
+new file mode 100644
+index 00000000..36f2181f
+--- /dev/null
++++ b/.github/pull_request_template.md
+@@ -0,0 +1,35 @@
++<!--
++PR title: a conventional commit, used as the squash commit message and by release-please:
++  <type>[(<scope>)][!]: <description>
++  type: feat, fix, perf, revert (release), or docs, style, refactor, test, build, ci, chore (no release)
++  scope (optional): api, federation-api, annotation-tool, bagel-cli, query-tool
++  "!" marks a breaking change.
++
++A PR that changes more than one package and should release several of them: use a
++non-releasing title (chore:, ci:, ...), make one conventional commit per package (each
++touching only that package), and merge with a MERGE COMMIT. See DEVELOPING.md. The
++"release-preview" job summary shows what release-please would propose.
++Never write the release-please override marker literally in this description; escape it as
++BEGIN\_COMMIT\_OVERRIDE when you mention it.
++-->
++
++- Closes #
++
++Changes proposed in this pull request:
++
++-
++
++## Checklist
++_This section is for the PR reviewer_
++
++- [ ] PR title is a conventional commit with the right type (it decides the release)
++- [ ] Multi-package PR that releases: one conventional commit per package, non-releasing title, merge with a merge commit
++- [ ] PR links to a GitHub issue with `Closes #XXXX`
++- [ ] Tests pass
++- [ ] Checks pass
++
++For new features:
++- [ ] Tests have been added
++
++For bug fixes:
++- [ ] There is at least one test that would fail under the original bug conditions.
+diff --git a/.github/workflows/pr-checks.yml b/.github/workflows/pr-checks.yml
+new file mode 100644
+index 00000000..fc947804
+--- /dev/null
++++ b/.github/workflows/pr-checks.yml
+@@ -0,0 +1,72 @@
++name: pr checks
++
++# PRs are squash-merged with the PR title as the commit message, and release-please reads
++# the commit messages: the title must be a conventional commit. Multi-tool PRs follow the
++# merge convention in DEVELOPING.md, checked at review with the release preview below.
++on:
++  pull_request:
++    types: [opened, edited, synchronize, reopened]
++
++permissions:
++  contents: read
++
++jobs:
++  pr-title:
++    runs-on: ubuntu-latest
++    permissions:
++      pull-requests: read
++    steps:
++      - name: Check the PR title
++        uses: amannn/action-semantic-pull-request@v6
++        env:
++          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
++        with:
++          types: |
++            feat
++            fix
++            perf
++            revert
++            docs
++            style
++            refactor
++            test
++            build
++            ci
++            chore
++          # tool folders under packages/; deps and deps-dev for Dependabot
++          scopes: |
++            api
++            federation-api
++            annotation-tool
++            bagel-cli
++            query-tool
++            deps
++            deps-dev
++
++  # Informational: the versions and changelog entries release-please would propose if this
++  # PR's commits landed on main as they are (a merge commit; a squash gives every changed
++  # tool the PR title's entry instead). Written to the job summary; never blocks.
++  release-preview:
++    runs-on: ubuntu-latest
++    continue-on-error: true
++    steps:
++      - name: Set up Node.js
++        uses: actions/setup-node@v7
++        with:
++          node-version: "20"
++
++      - name: release-please dry run
++        env:
++          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
++          # PRs from forks: the branch is not in this repository, so preview main
++          TARGET: ${{ github.event.pull_request.head.repo.full_name == github.repository && github.head_ref || 'main' }}
++        run: |
++          {
++            echo "## release-please dry run on \`$TARGET\`"
++            echo
++            echo '```'
++            npx --yes release-please@17.11.2 release-pr --dry-run \
++              --token "$GITHUB_TOKEN" --repo-url "$GITHUB_REPOSITORY" --target-branch "$TARGET" 2>&1 \
++              | grep -vE '^\s*$' || true
++            echo '```'
++          } | tee -a "$GITHUB_STEP_SUMMARY"
+diff --git a/.pre-commit-config.yaml b/.pre-commit-config.yaml
+new file mode 100644
+index 00000000..506eb2ed
+--- /dev/null
++++ b/.pre-commit-config.yaml
+@@ -0,0 +1,207 @@
++# Root pre-commit configuration of the monorepo.
++#
++# Every hook runs each package's existing linter/formatter config, scoped to the package
++# folder (`files:`) and with the config path passed explicitly, because hooks run from the
++# repository root. Package .pre-commit-config.yaml files are kept unchanged as dead code.
++# Hook versions are the ones the packages used upstream.
++#
++# Install: pre-commit install  (installs the pre-commit and post-merge hooks)
++
++default_install_hook_types: [pre-commit, post-merge]
++default_stages: [pre-commit]
++
++ci:
++  autofix_prs: false
++  autoupdate_commit_msg: "chore: pre-commit autoupdate"
++  # Need Docker or installed node_modules, which pre-commit.ci does not have.
++  # The frontend checks also run in the frontend CI workflows.
++  skip:
++    - docker-compose-check
++    - annotation-tool-typecheck
++    - annotation-tool-lint
++    - annotation-tool-format
++    - query-tool-typecheck
++    - query-tool-lint
++    - query-tool-format
++    - npm-ci-after-merge
++
++repos:
++  # --- Python formatting and linting (api, federation-api, bagel-cli) ---------------
++  - repo: https://github.com/psf/black-pre-commit-mirror
++    rev: 26.10.1
++    hooks:
++      - id: black
++        alias: black-api
++        files: ^packages/api/
++        args: [--config=packages/api/pyproject.toml]
++      - id: black
++        alias: black-federation-api
++        files: ^packages/federation-api/
++        args: [--config=packages/federation-api/pyproject.toml]
++      - id: black
++        alias: black-bagel-cli
++        files: ^packages/bagel-cli/
++        args: [--config=packages/bagel-cli/pyproject.toml]
++
++  - repo: https://github.com/PyCQA/flake8
++    rev: 7.5.0
++    hooks:
++      - id: flake8
++        alias: flake8-api
++        files: ^packages/api/
++        language_version: python3
++        args: [--config=packages/api/.flake8]
++      - id: flake8
++        alias: flake8-federation-api
++        files: ^packages/federation-api/
++        # federation-api passes its flake8 settings on the command line (no config file)
++        args:
++          - --extend-ignore=E501
++          - --extend-select=B950
++          - --per-file-ignores=./packages/federation-api/app/api/models.py:F722
++      - id: flake8
++        alias: flake8-bagel-cli
++        files: ^packages/bagel-cli/
++        language_version: python3
++        args: [--config=packages/bagel-cli/.flake8]
++
++  - repo: https://github.com/pre-commit/pre-commit-hooks
++    rev: v6.0.0
++    hooks:
++      - id: check-yaml
++        alias: check-yaml-python-packages
++        files: ^packages/(api|federation-api|bagel-cli)/
++      - id: check-toml
++        alias: check-toml-api-bagel-cli
++        files: ^packages/(api|bagel-cli)/
++      - id: pretty-format-json
++        alias: pretty-format-json-api
++        files: ^packages/api/
++        args: [--autofix, --no-sort-keys]
++
++  - repo: https://github.com/pycqa/isort
++    rev: 10.0.0b2
++    hooks:
++      # --settings-path only, never --src (resolved relative to the settings file)
++      - id: isort
++        alias: isort-api
++        files: ^packages/api/
++        args: [--settings-path=packages/api/pyproject.toml]
++      - id: isort
++        alias: isort-federation-api
++        files: ^packages/federation-api/
++        args: [--settings-path=packages/federation-api/pyproject.toml]
++      - id: isort
++        alias: isort-bagel-cli
++        files: ^packages/bagel-cli/
++        args: [--settings-path=packages/bagel-cli/pyproject.toml]
++
++  - repo: https://github.com/codespell-project/codespell
++    rev: v2.4.3
++    hooks:
++      - id: codespell
++        alias: codespell-api
++        files: ^packages/api/
++        additional_dependencies: [tomli]
++        args: [--config=packages/api/.codespellrc, --toml=packages/api/pyproject.toml]
++      - id: codespell
++        alias: codespell-federation-api
++        files: ^packages/federation-api/
++      - id: codespell
++        alias: codespell-bagel-cli
++        files: ^packages/bagel-cli/
++        additional_dependencies: [tomli]
++      # The frontends ran codespell in CI upstream; here it runs with the other hooks. Their
++      # .codespellrc `skip` globs do not match the paths pre-commit passes, so the same
++      # files are excluded here.
++      - id: codespell
++        alias: codespell-annotation-tool
++        files: ^packages/annotation-tool/
++        exclude: ^packages/annotation-tool/(src/assets/|package-lock\.json$|\.codespellrc$)|\.css$
++        args: [--config=packages/annotation-tool/.codespellrc]
++      - id: codespell
++        alias: codespell-query-tool
++        files: ^packages/query-tool/
++        exclude: ^packages/query-tool/(package-lock\.json$|\.codespellrc$)|\.css$
++        args: [--config=packages/query-tool/.codespellrc]
++
++  - repo: https://github.com/iamthefij/docker-pre-commit
++    rev: v3.0.1
++    hooks:
++      - id: docker-compose-check
++        files: ^packages/api/docker-compose\.yml$
++
++  - repo: https://github.com/pre-commit/mirrors-mypy
++    rev: v2.4.1
++    hooks:
++      - id: mypy
++        alias: mypy-api
++        files: ^packages/api/
++        additional_dependencies: [pydantic]
++        args: [--config-file=packages/api/pyproject.toml]
++      - id: mypy
++        alias: mypy-bagel-cli
++        files: ^packages/bagel-cli/
++        args: [--config-file=packages/bagel-cli/pyproject.toml]
++
++  # --- GitHub configuration ----------------------------------------------------------
++  - repo: https://github.com/python-jsonschema/check-jsonschema
++    rev: 0.39.0
++    hooks:
++      - id: check-github-workflows
++        alias: check-github-workflows-federation-api
++        files: ^packages/federation-api/\.github/workflows/[^/]+$
++      - id: check-github-workflows
++        alias: check-github-workflows-root
++      - id: check-dependabot
++
++  # --- Frontends (upstream husky + lint-staged) ---------------------------------------
++  # lint-staged ran typecheck and lint on staged ts/tsx files and format:check on any
++  # staged file, each over the whole package. Needs `npm ci` in the package.
++  - repo: local
++    hooks:
++      - id: annotation-tool-typecheck
++        name: annotation-tool typecheck
++        language: system
++        entry: npm --prefix packages/annotation-tool run typecheck
++        files: ^packages/annotation-tool/.*\.(ts|tsx)$
++        pass_filenames: false
++      - id: annotation-tool-lint
++        name: annotation-tool lint
++        language: system
++        entry: npm --prefix packages/annotation-tool run lint:check
++        files: ^packages/annotation-tool/.*\.(ts|tsx)$
++        pass_filenames: false
++      - id: annotation-tool-format
++        name: annotation-tool format check
++        language: system
++        entry: npm --prefix packages/annotation-tool run format:check
++        files: ^packages/annotation-tool/
++        pass_filenames: false
++      - id: query-tool-typecheck
++        name: query-tool typecheck
++        language: system
++        entry: npm --prefix packages/query-tool run typecheck
++        files: ^packages/query-tool/.*\.(ts|tsx)$
++        pass_filenames: false
++      - id: query-tool-lint
++        name: query-tool lint
++        language: system
++        entry: npm --prefix packages/query-tool run lint:check
++        files: ^packages/query-tool/.*\.(ts|tsx)$
++        pass_filenames: false
++      - id: query-tool-format
++        name: query-tool format check
++        language: system
++        entry: npm --prefix packages/query-tool run format:check
++        files: ^packages/query-tool/
++        pass_filenames: false
++      # Upstream husky post-merge hook: reinstall a frontend's dependencies when its
++      # package.json changed in the merge.
++      - id: npm-ci-after-merge
++        name: npm ci after merge (frontends)
++        language: system
++        entry: bash -c 'for d in packages/annotation-tool packages/query-tool; do git diff --quiet ORIG_HEAD HEAD -- "$d/package.json" || npm --prefix "$d" ci || exit 1; done'
++        stages: [post-merge]
++        always_run: true
++        pass_filenames: false
+-- 
+2.39.5
+

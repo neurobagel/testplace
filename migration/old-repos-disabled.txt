@@ -1,0 +1,22 @@
+# Old-repository workflows disabled at switchover by switchover.sh (files unchanged), and
+# re-enabled by switchover.sh --undo when switching back. Columns: repository, workflow file.
+# They would write to the repository (auto release: version bump, CHANGELOG commit, tags,
+# GitHub Release; the examples PR) or publish a second time next to the monorepo.
+api	release.yaml
+api	build_docker_nightly.yml
+api	build_docker_on_release.yml
+federation-api	release.yaml
+federation-api	build_docker_nightly.yml
+federation-api	build_docker_on_release.yml
+annotation-tool	release.yaml
+annotation-tool	build_docker_on_release.yml
+annotation-tool	deploy.yaml
+bagel-cli	release.yaml
+bagel-cli	build_docker_nightly.yml
+bagel-cli	build_docker_on_release.yml
+query-tool	release.yaml
+query-tool	build_docker_nightly.yml
+query-tool	build_docker_on_release.yml
+query-tool	deploy.yaml
+query-tool	updated_examples.yaml
+recipes	release.yaml
