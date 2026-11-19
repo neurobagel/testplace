@@ -92,3 +92,71 @@ jobs:
             gh release edit "$tag" --notes-file notes.md
             echo "$tag: $(wc -l <<<"$list") author(s)"
           done
+
+  # --- publishing: images v<version> and latest, configure-nb on PyPI, the site ----------
+  # Reruns: "Re-run failed jobs" on this workflow run; sites.yml can also be run by hand.
+  # recipes publishes nothing beyond its GitHub Release.
+  api-image:
+    needs: release-please
+    if: needs.release-please.outputs.api == 'true'
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/docker-build.yml
+    with:
+      tool: api
+      image: api
+      tags: |
+        type=raw,value=v${{ needs.release-please.outputs.api-version }}
+        type=raw,value=latest
+    secrets: inherit
+
+  federation-api-image:
+    needs: release-please
+    if: needs.release-please.outputs.federation-api == 'true'
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/docker-build.yml
+    with:
+      tool: federation-api
+      image: federation_api
+      tags: |
+        type=raw,value=v${{ needs.release-please.outputs.federation-api-version }}
+        type=raw,value=latest
+    secrets: inherit
+
+  # The app shows its version; upstream set package.json's version to the release tag.
+  query-tool-image:
+    needs: release-please
+    if: needs.release-please.outputs.query-tool == 'true'
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/docker-build.yml
+    with:
+      tool: query-tool
+      image: query_tool
+      tags: |
+        type=raw,value=v${{ needs.release-please.outputs.query-tool-version }}
+        type=raw,value=latest
+      platforms: linux/amd64
+      package-json-version: v${{ needs.release-please.outputs.query-tool-version }}
+    secrets: inherit
+
+  query-tool-site:
+    needs: release-please
+    if: needs.release-please.outputs.query-tool == 'true'
+    uses: ./.github/workflows/sites.yml
+    with:
+      tool: query-tool
+      version: ${{ needs.release-please.outputs.query-tool-version }}
+    secrets: inherit
+
+  configure-nb:
+    needs: release-please
+    if: needs.release-please.outputs.configure-nb == 'true'
+    uses: ./.github/workflows/configure-nb-release.yml
+    with:
+      version: ${{ needs.release-please.outputs.configure-nb-version }}
+    secrets: inherit

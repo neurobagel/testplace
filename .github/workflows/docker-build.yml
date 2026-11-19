@@ -1,0 +1,121 @@
+name: docker build (reusable)
+
+# Builds one tool's image from its own folder with its existing Dockerfile and pushes
+# it to ${IMAGE_REGISTRY}/${IMAGE_NAMESPACE}/<image> (repository variables: ghcr during
+# validation, Docker Hub in production).
+on:
+  workflow_call:
+    inputs:
+      tool:
+        description: Tool folder name under tools/ (the build context)
+        required: true
+        type: string
+      image:
+        description: Image name (published artifact name, e.g. api, federation_api)
+        required: true
+        type: string
+      dockerfile:
+        description: Dockerfile, relative to the tool folder
+        required: false
+        type: string
+        default: Dockerfile
+      tags:
+        description: Image tags as docker/metadata-action rules, one per line (e.g. type=raw,value=nightly)
+        required: true
+        type: string
+      platforms:
+        required: false
+        type: string
+        default: linux/arm64, linux/amd64
+      package-json-version:
+        description: Set package.json "version" to this value before building (query-tool); {short-sha} is replaced by the commit's short SHA
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check registry configuration
+        env:
+          REGISTRY: ${{ vars.IMAGE_REGISTRY }}
+          NAMESPACE: ${{ vars.IMAGE_NAMESPACE }}
+        run: |
+          if [ -z "$REGISTRY" ] || [ -z "$NAMESPACE" ]; then
+            echo "::error::Set the repository variables IMAGE_REGISTRY and IMAGE_NAMESPACE"; exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # The tool's symlinks into recipes/ and examples/ (former submodules) would dangle
+      # inside the build context (query-tool's build type-checks a Cypress spec that imports
+      # from neurobagel_examples). Replace them with copies, as upstream's context had the
+      # submodule contents.
+      - name: Materialize symlinks in the build context
+        working-directory: tools/${{ inputs.tool }}
+        run: |
+          git ls-files -s . | awk '$1=="120000" {print $4}' | while read -r link; do
+            target="$(readlink -f "$link")"
+            rm "$link"
+            cp -R "$target" "$link"
+            echo "materialized $link"
+          done
+
+      - name: Update package.json version
+        if: inputs.package-json-version != ''
+        working-directory: tools/${{ inputs.tool }}
+        env:
+          VERSION: ${{ inputs.package-json-version }}
+        run: |
+          VERSION="${VERSION//\{short-sha\}/${GITHUB_SHA::7}}"
+          jq ".version = \"${VERSION}\"" package.json > tmp.$$.json && mv tmp.$$.json package.json
+          cat package.json
+
+      # Tags as given; OCI labels (created, revision, source, version = first tag, ...) as
+      # upstream's release images had them.
+      - name: Image name, tags and labels
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ vars.IMAGE_REGISTRY }}/${{ vars.IMAGE_NAMESPACE }}/${{ inputs.image }}
+          tags: ${{ inputs.tags }}
+          flavor: latest=false
+
+      - name: Login to the registry (Docker Hub)
+        if: vars.IMAGE_REGISTRY == 'docker.io'
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Login to the registry (ghcr)
+        if: vars.IMAGE_REGISTRY == 'ghcr.io'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          platforms: ${{ inputs.platforms }}
+          context: tools/${{ inputs.tool }}
+          file: tools/${{ inputs.tool }}/${{ inputs.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

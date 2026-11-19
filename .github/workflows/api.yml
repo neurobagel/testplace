@@ -8,6 +8,7 @@ on:
       - "recipes/**"
       - "examples/**"
       - ".github/workflows/api.yml"
+      - ".github/workflows/docker-build.yml"
       - ".github/workflows/test-python.yml"
   pull_request:
     paths:
@@ -15,6 +16,7 @@ on:
       - "recipes/**"
       - "examples/**"
       - ".github/workflows/api.yml"
+      - ".github/workflows/docker-build.yml"
       - ".github/workflows/test-python.yml"
   workflow_dispatch:
 
@@ -29,4 +31,18 @@ jobs:
       # Tests marked `integration` need a running graph store (service-dependent): skipped
       # during the migration, they move to the global integration test suite.
       pytest-args: -m "not integration"
+    secrets: inherit
+
+  # On push to main (and by hand on main): the `nightly` image, after the tests pass.
+  nightly:
+    needs: test
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/docker-build.yml
+    with:
+      tool: api
+      image: api
+      tags: type=raw,value=nightly
     secrets: inherit
