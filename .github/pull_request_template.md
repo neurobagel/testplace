@@ -24,6 +24,7 @@ _This section is for the PR reviewer_
 
 - [ ] PR title is a conventional commit with the right type (it decides the release)
 - [ ] Multi-tool PR that releases: one conventional commit per tool, non-releasing title, merge with a merge commit
+- [ ] Tools stay self-contained and mirrorable (DEVELOPING.md, "Rules for the trial"); the tool's own workflows updated if its build or CI changed
 - [ ] PR links to a GitHub issue with `Closes #XXXX`
 - [ ] Tests pass
 - [ ] Checks pass

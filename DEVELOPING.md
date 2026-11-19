@@ -10,7 +10,7 @@ This guide covers what is shared across the folders in this repository. Each too
 | `recipes/` | Docker Compose recipes for deploying Neurobagel, with their full history (formerly neurobagel/recipes) |
 | `examples/` | Example data and API responses for tests (formerly neurobagel/neurobagel_examples) |
 | `shared/` | Configs shared by several tools, copied into the tool folders (see "Shared configs") |
-| `scripts/` | Repository scripts: `tool-pre-commit.sh` (runs a tool's own commit hooks), `sync-shared.py` (shared configs) |
+| `scripts/` | Repository scripts: `tool-pre-commit.sh` (runs a tool's own commit hooks), `sync-shared.py` (shared configs), `mirror.py` (the mirror to the old repositories) |
 | `.github/` | CI, release and publishing workflows for the whole repository |
 | `migration/` | Records and scripts of the migration to the monorepo (temporary) |
 | `DEVELOPING.md` | This guide |
@@ -184,6 +184,8 @@ Publishing targets come from repository variables, so the same workflows publish
 | `IMAGE_NAMESPACE` | `neurobagel` | `neurobagel` |
 | `PYPI_REPOSITORY_URL` | `https://test.pypi.org/legacy/` (with a TestPyPI `PYPI_TOKEN` repository secret) | unset (PyPI) |
 | `SITE_DEPLOY` | `false` | `true` |
+| `MIRROR_OWNER` | `neurobagel` (draft mirror PRs only, until the old repositories are locked) | `neurobagel` |
+| `MIRROR_MERGE` | unset (the mirror never merges or tags) | `true`, set by hand after the switchover |
 
 `images-validation.yml` (manual, temporary: for the migration's validation phase) builds and pushes every image with a `validation-<sha>` tag.
 
@@ -207,6 +209,42 @@ One `.github/dependabot.yml` covers every folder, checked weekly. Its PRs have `
 ## Required status checks
 
 None for now. When they are added, use **one always-running aggregator job** as the only required check. Path-filtered workflows that are skipped never report a status, so requiring them directly would block every PR that does not touch that tool.
+
+## The old repositories
+
+The monorepo is on trial for a few months. During the trial the old repositories (neurobagel/api, federation-api, query-tool, configure-nb, recipes, neurobagel_examples) are read-only mirrors of their folders here, and their own CI keeps running. If the monorepo is given up, development moves back to them with nothing to replay. (neurobagel/annotation-tool and neurobagel/bagel-cli are not part of the monorepo yet and are developed as before.)
+
+### How the mirror works
+
+`.github/workflows/mirror.yml` runs `scripts/mirror.py` on every push to `main` and nightly. For each old repository it:
+
+1. Adds one commit to the branch `monorepo-mirror` for each commit on `main` that changes the folder (`tools/<tool>/`, `recipes/`, `examples/` for neurobagel_examples). The commit holds the folder exactly as it is here, with the original author, date and message. The only change: the symlinks `recipes` and `neurobagel_examples` in api and query-tool become submodule pointers to the mirrored recipes and neurobagel_examples commits. A `Monorepo-Commit:` trailer records the source commit.
+2. Opens or updates one pull request from `monorepo-mirror` to `main`. The old repository's CI runs on it.
+3. Once that CI passes, fast-forwards the old `main` to the branch (GitHub then marks the PR merged; the next change opens a new one), and pushes the new tags: `api-v0.13.0` here becomes `v0.13.0` there. The old repositories get no GitHub Releases.
+4. Reports the old CI result as a commit status `mirror/<repo>` on the commit here. When the old CI fails (or the mirror hits an error) the mirror run fails, and the mirror badge in the README turns red.
+
+Step 3 needs two things: the repository variable `MIRROR_MERGE` set to `true` (by hand, after the switchover; never in the rehearsal repository), and a locked old repository (a ruleset restricts updates of `main`; the bot app is the only exception). Without both, the mirror only keeps the branch and a draft PR up to date: before the switchover the old repositories are still in use, and the draft only shows that the old CI passes on the mirrored code.
+
+The mirror stops with an error, and writes nothing, if an old `main` has a commit it did not make. Port that commit here (below), then run the workflow by hand with `adopt: <repo>=<sha>`. After rebuilding the repository the mirror is run by hand with `reset`. `dry_run` shows what would be mirrored.
+
+### Rules for the trial
+
+- **Keep every tool self-contained.** Each one builds and tests from its own folder with its own lockfile and configs. No npm or uv workspace with a root lockfile, no imports across tools, no Docker builds from the repository root, no tool config that refers to a file outside its folder (shared configs are copied in, see "Shared configs").
+- **`tools/<tool>/.github/`, `.gitmodules`, `.pre-commit-config.yaml` and the tool configs are live:** they are the old repository's CI and setup. A change to a tool's build or CI also updates its own workflows in the same PR. The Python versions in `tools/<tool>/.github/workflows/test.yaml` are the ones both CIs test.
+- **Tools reach `recipes/` and `examples/` only through the existing symlinks.** The `mirror-check` PR check fails on other symlinks leaving a folder, and on relative Markdown links leaving a folder (use absolute URLs; they would break in the old repository).
+- **No renaming of folders or tag prefixes, and no rewriting of `main`.**
+- **Red old CI is a must-fix** (red mirror badge): fix it here; the mirror merges once it passes. It does not block merging here. Old CI can differ from the CI here (configure-nb's old CI installs with `--upgrade`).
+
+### Porting a change from an old repository
+
+The old repositories take no changes of their own. To bring an open PR (or any commits) over, apply its commits to the folder and open a PR here:
+
+```bash
+git -C ../api fetch origin pull/123/head:pr-123
+git -C ../api format-patch --stdout origin/main..pr-123 | git am -3 --directory=tools/api
+```
+
+For recipes use `--directory=recipes`. The other way (when switching back): `git format-patch --relative=tools/api ... | git am -3` in the old repository.
 
 ## Repository settings
 
