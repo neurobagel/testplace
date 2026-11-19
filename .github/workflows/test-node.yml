@@ -1,0 +1,117 @@
+name: test node (reusable)
+
+# Checks and tests one frontend tool, as its upstream CI did.
+on:
+  workflow_call:
+    inputs:
+      tool:
+        description: Tool folder name under tools/ (e.g. query-tool)
+        required: true
+        type: string
+      component-env:
+        description: Contents of .env for the component tests (empty = no .env)
+        required: false
+        type: string
+        default: ""
+      e2e-env:
+        description: Contents of .env for the e2e tests (empty = no .env)
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "20"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tools/${{ inputs.tool }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Install dependencies
+        run: npm ci
+      - name: Run ESLint
+        run: npm run lint:check
+      - name: Run Prettier check
+        run: npm run format:check
+
+  component:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tools/${{ inputs.tool }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Create .env file
+        if: inputs.component-env != ''
+        env:
+          ENV_CONTENT: ${{ inputs.component-env }}
+        run: printf '%s\n' "$ENV_CONTENT" > .env
+      - name: Build
+        run: |
+          npm ci
+          npm run build
+      - name: Run component tests
+        uses: cypress-io/github-action@v7
+        with:
+          working-directory: tools/${{ inputs.tool }}
+          install: false
+          component: true
+
+  e2e:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tools/${{ inputs.tool }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Create .env file
+        if: inputs.e2e-env != ''
+        env:
+          ENV_CONTENT: ${{ inputs.e2e-env }}
+        run: printf '%s\n' "$ENV_CONTENT" > .env
+      - name: Build
+        run: |
+          npm ci
+          npm run build
+      - name: Run end to end tests
+        uses: cypress-io/github-action@v7
+        with:
+          working-directory: tools/${{ inputs.tool }}
+          install: false
+          start: npm run preview
+          wait-on: http://localhost:5173
+          component: false
+      - name: Upload e2e screenshots on failure
+        if: failure()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: e2e-screenshots
+          path: tools/${{ inputs.tool }}/cypress/screenshots
+          retention-days: 30

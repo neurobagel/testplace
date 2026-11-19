@@ -1,0 +1,148 @@
+name: recipes
+
+# Ported from recipes' own workflows (recipes/.github/workflows, the old repository's CI):
+#   setup (test_setup.yml): two local nodes and a portal from the released images
+#   e2e (test_fullstack_e2e.yml): the same stack, then recipes' Cypress end-to-end tests
+#   compatibility (compatibility.yaml, scheduled): the `latest` and the `nightly` images with
+#     the default recipe, Cypress end-to-end tests, a Slack message (secret NB_SLACK_WEBHOOK)
+#     when they fail. Runs only here; the old repository's copy is disabled at switchover.
+# The shared two-node setup is .github/actions/recipes-test-setup.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "recipes/**"
+      - ".github/workflows/recipes.yml"
+      - ".github/actions/recipes-test-setup/**"
+  pull_request:
+    paths:
+      - "recipes/**"
+      - ".github/workflows/recipes.yml"
+      - ".github/actions/recipes-test-setup/**"
+  schedule:
+    - cron: "21 5,17 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up
+        uses: ./.github/actions/recipes-test-setup
+
+  e2e:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Neurobagel full stack
+        uses: ./.github/actions/recipes-test-setup
+
+      - name: Set up node env
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+
+      - name: Install Cypress
+        working-directory: recipes
+        run: npm ci
+
+      - name: Cypress run
+        uses: cypress-io/github-action@v7
+        with:
+          working-directory: recipes
+          install: false
+          wait-on: http://localhost:3000
+          config: excludeSpecPattern="**/simple-test.cy.js"
+          # otherwise, defaults to Electron
+          browser: chrome
+
+  compatibility:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        images: [latest, nightly]
+    defaults:
+      run:
+        working-directory: recipes
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Rename files
+        env:
+          IMAGES: ${{ matrix.images }}
+        run: |
+          cp template.env .env
+          cp local_nb_nodes.template.json local_nb_nodes.json
+          if [ "$IMAGES" = nightly ]; then sed -i 's/latest/nightly/g' .env; fi
+
+      - name: Edit NB_API_QUERY_URL env var
+        run: |
+          sed -i 's|^NB_API_QUERY_URL=.*|NB_API_QUERY_URL=http://localhost:8080|g' .env
+
+      - name: Run docker compose
+        run: |
+          docker compose up -d
+
+      - name: Set up node env
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+
+      - name: Install cypress
+        run: npm install
+
+      - name: wait for graph set up
+        working-directory: recipes/scripts
+        run: |
+          # The logs are written at the end of the setup at the moment, so we have to wait for the file to exist
+          while [ ! -f ./logs/DEPLOY.log ]; do
+            :
+          done
+          # Once the file is there, we want to wait for the message that the setup is done
+          echo "We think the file exists now!"
+          while ! tail -n 0 -f ./logs/DEPLOY.log | grep -q "Finished setting up the Neurobagel graph backend."; do
+            :
+          done
+          echo "Finished setting up the Neurobagel graph backend."
+
+      - name: Run end to end tests
+        uses: cypress-io/github-action@v7
+        with:
+          working-directory: recipes
+          install: false
+          wait-on: http://localhost:3000
+          component: false
+
+      - name: Tell someone
+        if: failure()
+        env:
+          IMAGES: ${{ matrix.images }}
+          WEBHOOK: ${{ secrets.NB_SLACK_WEBHOOK }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "$WEBHOOK" ]; then echo "NB_SLACK_WEBHOOK not set: no message"; exit 0; fi
+          jq -n --arg t "Neurobagel ${IMAGES} version compatibility test failed! Please check ${RUN_URL} and resolve the incompatible versions!" '{text: $t}' \
+            | curl -fsS -X POST -H 'Content-type: application/json' -d @- "$WEBHOOK"
+
+      - name: Clean up
+        if: always()
+        run: |
+          docker compose down
