@@ -1,0 +1,530 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 19 Nov 2026 16:39:21 +0000
+Subject: [PATCH 3/8] ci: add commit hooks (pre-commit), shared configs, PR
+ title check, release preview, dependabot
+
+- Commit hooks with pre-commit, installed once at the root: each tool keeps its own .pre-commit-config.yaml (unchanged, so it keeps working in the old repository), and the root .pre-commit-config.yaml runs them, one hook per tool, through scripts/tool-pre-commit.sh. The script runs a tool's config from inside the tool folder, as in the old repository (pre-commit itself runs hooks from the repository root, where the tools' relative config paths would not resolve), by giving git a view in which the folder is the repository root. Root hooks for the repository-wide files (workflows, dependabot.yml, shared configs) and query-tool's post-merge npm ci. tools/query-tool/.pre-commit-config.yaml: its husky/lint-staged checks and its CI spelling check as hooks.
+- shared/ and scripts/sync-shared.py: configs shared by several tools live once in shared/ and are copied into the tool folders listed in shared/files.yaml (commit hook; CI fails on a differing copy). The list starts empty.
+- pr-checks.yml: conventional PR titles (action-semantic-pull-request, optional tool scope), an informational release-please dry run in the job summary, and the pre-commit job (all hooks on all files).
+- .github/dependabot.yml replaces the per-repo copies; adds grouped Docker base image updates (no major or python minor updates).
+- Root pull request template.
+---
+ .github/dependabot.yml                   | 71 +++++++++++++++++
+ .github/pull_request_template.md         | 35 +++++++++
+ .github/workflows/pr-checks.yml          | 99 ++++++++++++++++++++++++
+ .pre-commit-config.yaml                  | 80 +++++++++++++++++++
+ scripts/sync-shared.py                   | 65 ++++++++++++++++
+ scripts/tool-pre-commit.sh               | 41 ++++++++++
+ shared/files.yaml                        |  9 +++
+ tools/query-tool/.pre-commit-config.yaml | 49 ++++++++++++
+ 8 files changed, 449 insertions(+)
+ create mode 100644 .github/dependabot.yml
+ create mode 100644 .github/pull_request_template.md
+ create mode 100644 .github/workflows/pr-checks.yml
+ create mode 100644 .pre-commit-config.yaml
+ create mode 100755 scripts/sync-shared.py
+ create mode 100755 scripts/tool-pre-commit.sh
+ create mode 100644 shared/files.yaml
+ create mode 100644 tools/query-tool/.pre-commit-config.yaml
+
+diff --git a/.github/dependabot.yml b/.github/dependabot.yml
+new file mode 100644
+index 00000000..94eea2de
+--- /dev/null
++++ b/.github/dependabot.yml
+@@ -0,0 +1,71 @@
++# Dependabot for the monorepo (replaces the per-repo copies of the org template, which
++# stay in tools/*/.github and recipes/.github for the old repositories).
++#
++# Same policy as upstream: GitHub Actions weekly; npm minor/patch updates grouped, majors
++# ignored; Python (uv) security updates only (version updates off via
++# open-pull-requests-limit: 0). New: Docker base images, grouped, with major updates and
++# Python minor updates (python:3.10 -> 3.13) ignored.
++# Every entry uses the commit-message prefix "build", so dependabot PR titles pass the PR
++# title check and release nothing.
++
++version: 2
++updates:
++  - package-ecosystem: "github-actions"
++    directory: "/"
++    schedule:
++      interval: "weekly"
++    commit-message:
++      prefix: "build"
++    labels: ["_bot", "dependencies"]
++
++  - package-ecosystem: "npm"
++    directories:
++      - "/tools/query-tool"
++      - "/recipes"
++    schedule:
++      interval: "weekly"
++    groups:
++      production-dependencies:
++        applies-to: version-updates
++        dependency-type: "production"
++      development-dependencies:
++        applies-to: version-updates
++        dependency-type: "development"
++    ignore:
++      - dependency-name: "*"
++        update-types: ["version-update:semver-major"]
++    commit-message:
++      prefix: "build"
++    labels: ["_bot", "dependencies"]
++
++  - package-ecosystem: "uv"
++    directories:
++      - "/tools/api"
++      - "/tools/federation-api"
++      - "/tools/configure-nb"
++    schedule:
++      interval: "weekly"
++    open-pull-requests-limit: 0
++    commit-message:
++      prefix: "build"
++    labels: ["_bot", "dependencies"]
++
++  - package-ecosystem: "docker"
++    directories:
++      - "/tools/api"
++      - "/tools/federation-api"
++      - "/tools/query-tool"
++    schedule:
++      interval: "weekly"
++    groups:
++      docker-base-images:
++        patterns: ["*"]
++    ignore:
++      - dependency-name: "*"
++        update-types: ["version-update:semver-major"]
++      # python:3.10 -> 3.13 counts as a minor update but changes the images' runtime Python
++      - dependency-name: "python"
++        update-types: ["version-update:semver-minor"]
++    commit-message:
++      prefix: "build"
++    labels: ["_bot", "dependencies"]
+diff --git a/.github/pull_request_template.md b/.github/pull_request_template.md
+new file mode 100644
+index 00000000..0d3c2344
+--- /dev/null
++++ b/.github/pull_request_template.md
+@@ -0,0 +1,35 @@
++<!--
++PR title: a conventional commit, used as the squash commit message and by release-please:
++  <type>[(<scope>)][!]: <description>
++  type: feat, fix, perf, refactor, revert (release), or docs, test, chore, ci, build, style (no release)
++  scope (optional): api, federation-api, query-tool, configure-nb, recipes, examples
++  "!" marks a breaking change.
++
++A PR that changes more than one tool and should release several of them: use a
++non-releasing title (chore:, ci:, ...), make one conventional commit per tool (each
++touching only that tool), and merge with a MERGE COMMIT. See DEVELOPING.md. The
++"release-preview" job summary shows what release-please would propose.
++Never write the release-please override marker literally in this description; escape it as
++BEGIN\_COMMIT\_OVERRIDE when you mention it.
++-->
++
++- Closes #
++
++Changes proposed in this pull request:
++
++-
++
++## Checklist
++_This section is for the PR reviewer_
++
++- [ ] PR title is a conventional commit with the right type (it decides the release)
++- [ ] Multi-tool PR that releases: one conventional commit per tool, non-releasing title, merge with a merge commit
++- [ ] PR links to a GitHub issue with `Closes #XXXX`
++- [ ] Tests pass
++- [ ] Checks pass
++
++For new features:
++- [ ] Tests have been added
++
++For bug fixes:
++- [ ] There is at least one test that would fail under the original bug conditions.
+diff --git a/.github/workflows/pr-checks.yml b/.github/workflows/pr-checks.yml
+new file mode 100644
+index 00000000..4f74ef21
+--- /dev/null
++++ b/.github/workflows/pr-checks.yml
+@@ -0,0 +1,99 @@
++name: pr checks
++
++# PRs are squash-merged with the PR title as the commit message, and release-please reads
++# the commit messages: the title must be a conventional commit. Multi-tool PRs follow the
++# merge convention in DEVELOPING.md, checked at review with the release preview below.
++on:
++  pull_request:
++    types: [opened, edited, synchronize, reopened]
++
++permissions:
++  contents: read
++
++jobs:
++  pr-title:
++    runs-on: ubuntu-latest
++    permissions:
++      pull-requests: read
++    steps:
++      - name: Check the PR title
++        uses: amannn/action-semantic-pull-request@v6
++        env:
++          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
++        with:
++          types: |
++            feat
++            fix
++            perf
++            revert
++            docs
++            style
++            refactor
++            test
++            build
++            ci
++            chore
++          # tools, recipes, examples; deps for Dependabot
++          scopes: |
++            api
++            federation-api
++            query-tool
++            configure-nb
++            recipes
++            examples
++            deps
++
++  # Informational: the versions and changelog entries release-please would propose if this
++  # PR's commits landed on main as they are (a merge commit; a squash gives every changed
++  # tool the PR title's entry instead). Written to the job summary; never blocks.
++  release-preview:
++    runs-on: ubuntu-latest
++    continue-on-error: true
++    steps:
++      - name: Set up Node.js
++        uses: actions/setup-node@v7
++        with:
++          node-version: "20"
++
++      - name: release-please dry run
++        env:
++          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
++          # PRs from forks: the branch is not in this repository, so preview main
++          TARGET: ${{ github.event.pull_request.head.repo.full_name == github.repository && github.head_ref || 'main' }}
++        run: |
++          {
++            echo "## release-please dry run on \`$TARGET\`"
++            echo
++            echo '```'
++            npx --yes release-please@17.11.2 release-pr --dry-run \
++              --token "$GITHUB_TOKEN" --repo-url "$GITHUB_REPOSITORY" --target-branch "$TARGET" 2>&1 \
++              | grep -vE '^\s*$' || true
++            echo '```'
++          } | tee -a "$GITHUB_STEP_SUMMARY"
++
++  # The commit hooks, on all files: the root .pre-commit-config.yaml, which also runs every
++  # tool's own .pre-commit-config.yaml from inside the tool folder (scripts/tool-pre-commit.sh).
++  pre-commit:
++    if: github.event.action != 'edited'
++    runs-on: ubuntu-latest
++    steps:
++      - name: Checkout
++        uses: actions/checkout@v7
++        with:
++          persist-credentials: false
++
++      - name: Set up Node.js
++        uses: actions/setup-node@v7
++        with:
++          node-version: "20"
++
++      # query-tool's hooks (typecheck, lint, format) run its npm scripts
++      - name: Install query-tool dependencies
++        working-directory: tools/query-tool
++        run: npm ci
++
++      - name: Set up uv
++        uses: astral-sh/setup-uv@v7
++
++      - name: Run the hooks on all files
++        run: uvx pre-commit@4.7.0 run --all-files --show-diff-on-failure
+diff --git a/.pre-commit-config.yaml b/.pre-commit-config.yaml
+new file mode 100644
+index 00000000..91bc067b
+--- /dev/null
++++ b/.pre-commit-config.yaml
+@@ -0,0 +1,80 @@
++# Root pre-commit configuration of the monorepo: install once at the root with
++#   pre-commit install
++# (pre-commit and post-merge hooks).
++#
++# Each tool keeps its own .pre-commit-config.yaml (the same file its old repository uses).
++# The "tool" hooks below run those configs: scripts/tool-pre-commit.sh runs a tool's config
++# from inside its folder, on the tool's changed files, exactly as in the old repository.
++# The other hooks check the repository-wide files. In CI the hooks run in the pre-commit
++# job of .github/workflows/pr-checks.yml (pre-commit.ci cannot run the tool hooks: they
++# install their hook environments while running).
++default_install_hook_types: [pre-commit, post-merge]
++default_stages: [pre-commit]
++
++repos:
++  # --- the tools' own configurations ------------------------------------------------------
++  - repo: local
++    hooks:
++      - id: api
++        name: api (tools/api/.pre-commit-config.yaml)
++        language: python
++        additional_dependencies: [pre-commit==4.7.0]
++        entry: scripts/tool-pre-commit.sh tools/api
++        files: ^tools/api/
++        require_serial: true
++      - id: federation-api
++        name: federation-api (tools/federation-api/.pre-commit-config.yaml)
++        language: python
++        additional_dependencies: [pre-commit==4.7.0]
++        entry: scripts/tool-pre-commit.sh tools/federation-api
++        files: ^tools/federation-api/
++        require_serial: true
++      - id: configure-nb
++        name: configure-nb (tools/configure-nb/.pre-commit-config.yaml)
++        language: python
++        additional_dependencies: [pre-commit==4.7.0]
++        entry: scripts/tool-pre-commit.sh tools/configure-nb
++        files: ^tools/configure-nb/
++        require_serial: true
++      # query-tool's hooks run its npm scripts: run `npm ci` in tools/query-tool once.
++      - id: query-tool
++        name: query-tool (tools/query-tool/.pre-commit-config.yaml)
++        language: python
++        additional_dependencies: [pre-commit==4.7.0]
++        entry: scripts/tool-pre-commit.sh tools/query-tool
++        files: ^tools/query-tool/
++        require_serial: true
++      # query-tool's post-merge hook (its husky post-merge): reinstall its dependencies when
++      # its package.json changed in the merge.
++      - id: query-tool-npm-ci-after-merge
++        name: query-tool npm ci after merge
++        language: system
++        entry: bash -c 'git diff --quiet ORIG_HEAD HEAD -- tools/query-tool/package.json || npm --prefix tools/query-tool ci'
++        stages: [post-merge]
++        always_run: true
++        pass_filenames: false
++
++  # --- repository-wide files -----------------------------------------------------------------
++  - repo: https://github.com/python-jsonschema/check-jsonschema
++    rev: 0.39.0
++    hooks:
++      - id: check-github-workflows
++        files: ^\.github/workflows/[^/]+\.ya?ml$
++      - id: check-dependabot
++
++  - repo: https://github.com/rhysd/actionlint
++    rev: v1.7.12
++    hooks:
++      - id: actionlint
++        files: ^\.github/workflows/[^/]+\.ya?ml$
++
++  - repo: local
++    hooks:
++      # Configs shared by several tools: shared/ -> the copies listed in shared/files.yaml
++      - id: sync-shared
++        name: shared configs copied into the tools
++        language: python
++        additional_dependencies: [pyyaml==6.0.3]
++        entry: python scripts/sync-shared.py
++        always_run: true
++        pass_filenames: false
+diff --git a/scripts/sync-shared.py b/scripts/sync-shared.py
+new file mode 100755
+index 00000000..f3d0a8b0
+--- /dev/null
++++ b/scripts/sync-shared.py
+@@ -0,0 +1,65 @@
++#!/usr/bin/env python3
++"""Copy the shared configs in shared/ into the tool folders, as listed in shared/files.yaml.
++
++Usage (from anywhere in the repository; needs PyYAML):
++  sync-shared.py           write every copy that differs from its source; exit 1 if any did
++  sync-shared.py --check   only report copies that differ; exit 1 if any do
++
++Runs as a commit hook (root .pre-commit-config.yaml): a commit that changes a source
++gets its copies updated, to be added to the commit. A copy edited by hand is overwritten.
++"""
++
++import argparse
++import os
++import subprocess
++import sys
++
++import yaml
++
++
++def main():
++    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
++    ap.add_argument("--check", action="store_true", help="report differences, write nothing")
++    opts = ap.parse_args()
++
++    root = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True,
++                          check=True).stdout.strip()
++    with open(os.path.join(root, "shared", "files.yaml"), encoding="utf-8") as f:
++        entries = yaml.safe_load(f) or []
++
++    problems, changed = [], []
++    for entry in entries:
++        source = entry["source"]
++        if not source.startswith("shared/"):
++            problems.append(f"{source}: sources must be in shared/")
++            continue
++        try:
++            with open(os.path.join(root, source), "rb") as f:
++                content = f.read()
++        except FileNotFoundError:
++            problems.append(f"{source}: missing")
++            continue
++        for copy in entry.get("copies") or []:
++            if not copy.startswith("tools/"):
++                problems.append(f"{copy}: copies must be inside a tool folder")
++                continue
++            path = os.path.join(root, copy)
++            current = open(path, "rb").read() if os.path.exists(path) else None
++            if current == content:
++                continue
++            changed.append(copy)
++            if not opts.check:
++                os.makedirs(os.path.dirname(path), exist_ok=True)
++                with open(path, "wb") as f:
++                    f.write(content)
++
++    for p in problems:
++        print(f"error: {p}")
++    verb = "differs from" if opts.check else "updated from"
++    for c in changed:
++        print(f"{c}: {verb} its source in shared/")
++    return 1 if problems or changed else 0
++
++
++if __name__ == "__main__":
++    sys.exit(main())
+diff --git a/scripts/tool-pre-commit.sh b/scripts/tool-pre-commit.sh
+new file mode 100755
+index 00000000..892f260e
+--- /dev/null
++++ b/scripts/tool-pre-commit.sh
+@@ -0,0 +1,41 @@
++#!/usr/bin/env bash
++# Run a tool's own pre-commit configuration (tools/<tool>/.pre-commit-config.yaml) from
++# inside the tool folder, exactly as in the tool's old repository.
++#
++# Usage: tool-pre-commit.sh <tool-folder> [file ...]
++#   files are relative to the repository root (as pre-commit passes them); without files,
++#   the tool's hooks run on all its files. Extra arguments for `pre-commit run` (e.g. a hook
++#   id) can be given in TOOL_PRE_COMMIT_ARGS.
++#
++# Used by the root .pre-commit-config.yaml (one hook per tool), so `pre-commit install`
++# once at the root runs every tool's own hooks. pre-commit always runs hooks from the
++# repository root, where the tools' relative config paths (--config=.flake8, ...) would not
++# resolve. So this script shows git a view in which the tool folder is the repository root:
++# the work tree is the folder, and a temporary index holds the folder's staged entries with
++# the folder prefix removed. Inside that view, pre-commit behaves as in the old repository.
++set -euo pipefail
++
++dir="${1:?usage: tool-pre-commit.sh <tool-folder> [file ...]}"
++shift
++dir="${dir%/}"
++root="$(git rev-parse --show-toplevel)"
++gitdir="$(git rev-parse --absolute-git-dir)"
++tmp="$(mktemp -d)"
++trap 'rm -rf "${tmp}"' EXIT
++
++# The folder's index entries (staged content), without the folder prefix.
++git -C "${root}" ls-files --stage -z -- "${dir}" \
++  | sed -z "s#\t${dir}/#\t#" \
++  | GIT_INDEX_FILE="${tmp}/index" git -C "${root}" update-index -z --index-info
++
++files=()
++for f in "$@"; do files+=("${f#"${dir}"/}"); done
++
++cd "${root}/${dir}"
++export GIT_DIR="${gitdir}" GIT_WORK_TREE="${root}/${dir}" GIT_INDEX_FILE="${tmp}/index"
++# shellcheck disable=SC2086
++if [[ ${#files[@]} -eq 0 ]]; then
++  exec pre-commit run ${TOOL_PRE_COMMIT_ARGS:-} --all-files
++else
++  exec pre-commit run ${TOOL_PRE_COMMIT_ARGS:-} --files "${files[@]}"
++fi
+diff --git a/shared/files.yaml b/shared/files.yaml
+new file mode 100644
+index 00000000..a2dc0774
+--- /dev/null
++++ b/shared/files.yaml
+@@ -0,0 +1,9 @@
++# Configs shared by several tools: each source file in shared/ is copied to every path in
++# `copies` (inside the tool folders) by scripts/sync-shared.py, which runs as a commit hook
++# and in CI. Edit the source, never a copy. The copies are committed, so each tool folder
++# stays self-contained (and its old repository gets them through the mirror).
++#
++# - source: shared/<file>
++#   copies:
++#     - tools/<tool>/<file>
++[]
+diff --git a/tools/query-tool/.pre-commit-config.yaml b/tools/query-tool/.pre-commit-config.yaml
+new file mode 100644
+index 00000000..ec73099b
+--- /dev/null
++++ b/tools/query-tool/.pre-commit-config.yaml
+@@ -0,0 +1,49 @@
++# Commit hooks for the query tool (pre-commit). In the monorepo, the root
++# .pre-commit-config.yaml runs this file from this folder (scripts/tool-pre-commit.sh).
++# The same checks as the husky hooks and lint-staged config (.husky/, lint-staged.config.js),
++# plus the spelling check that ran in CI (codespell.yml). They need `npm ci` in this folder.
++# husky keeps working on its own; use one or the other.
++default_install_hook_types: [pre-commit, post-merge]
++default_stages: [pre-commit]
++
++ci:
++  # pre-commit.ci has no node_modules
++  skip: [typecheck, lint, format]
++
++repos:
++  - repo: https://github.com/codespell-project/codespell
++    rev: v2.4.3
++    hooks:
++      - id: codespell
++        args: [--config=.codespellrc]
++        # .codespellrc's `skip` globs do not match the file paths pre-commit passes
++        exclude: (^|/)package-lock\.json$|\.css$|^\.codespellrc$
++
++  - repo: local
++    hooks:
++      # lint-staged: typecheck and lint when a ts/tsx file changes, format check on any change
++      - id: typecheck
++        name: typecheck
++        language: system
++        entry: npm run typecheck
++        files: \.(ts|tsx)$
++        pass_filenames: false
++      - id: lint
++        name: lint
++        language: system
++        entry: npm run lint:check
++        files: \.(ts|tsx)$
++        pass_filenames: false
++      - id: format
++        name: format check
++        language: system
++        entry: npm run format:check
++        pass_filenames: false
++      # .husky/post-merge: reinstall the dependencies when package.json changed in the merge
++      - id: npm-ci-after-merge
++        name: npm ci after merge
++        language: system
++        entry: bash -c 'git diff --quiet ORIG_HEAD HEAD -- package.json || npm ci'
++        stages: [post-merge]
++        always_run: true
++        pass_filenames: false
+-- 
+2.39.5
+

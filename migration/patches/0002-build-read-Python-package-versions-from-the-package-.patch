@@ -1,0 +1,64 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 19 Nov 2026 16:39:21 +0000
+Subject: [PATCH 2/8] build: read Python package versions from the package's
+ own tags
+
+hatch-vcs (setuptools-scm) in api, federation-api and configure-nb, with settings that work unchanged in the monorepo and in the old repository (which mirrors the tool folder): the git root is searched above the tool folder, and only the tool's own tags count (<tag-prefix>-v<version> here, v<version> in the old repository).
+---
+ tools/api/pyproject.toml            | 5 +++++
+ tools/configure-nb/pyproject.toml   | 5 +++++
+ tools/federation-api/pyproject.toml | 5 +++++
+ 3 files changed, 15 insertions(+)
+
+diff --git a/tools/api/pyproject.toml b/tools/api/pyproject.toml
+index a1a7e555..9574f76b 100644
+--- a/tools/api/pyproject.toml
++++ b/tools/api/pyproject.toml
+@@ -56,6 +56,11 @@ version-file = "app/_version.py"  # useful for accessing dynamically calculated
+ 
+ [tool.hatch.version.raw-options]
+ local_scheme = "no-local-version"  # do not append local version info to the version string to avoid PyPI upload errors
++# Monorepo and old repository: find the git root above this folder, and read this package's
++# tags (api-v<version> in the monorepo, v<version> in the old repository)
++search_parent_directories = true
++tag_regex = "^(?:api-)?v(?P<version>\\d+(?:\\.\\d+){0,2}[^\\+]*)(?:\\+.*)?$"
++git_describe_command = "git describe --dirty --tags --long --match 'api-v*' --match 'v*'"
+ 
+ [tool.black]
+ line-length = 79
+diff --git a/tools/configure-nb/pyproject.toml b/tools/configure-nb/pyproject.toml
+index 9d9226e8..10c71249 100644
+--- a/tools/configure-nb/pyproject.toml
++++ b/tools/configure-nb/pyproject.toml
+@@ -55,6 +55,11 @@ version-file = "configure_nb/_version.py"  # useful for accessing dynamically ca
+ 
+ [tool.hatch.version.raw-options]
+ local_scheme = "no-local-version"  # do not append local version info to the version string to avoid PyPI upload errors
++# Monorepo and old repository: find the git root above this folder, and read this package's
++# tags (configure-nb-v<version> in the monorepo, v<version> in the old repository)
++search_parent_directories = true
++tag_regex = "^(?:configure-nb-)?v(?P<version>\\d+(?:\\.\\d+){0,2}[^\\+]*)(?:\\+.*)?$"
++git_describe_command = "git describe --dirty --tags --long --match 'configure-nb-v*' --match 'v*'"
+ 
+ [tool.black]
+ line-length = 79
+diff --git a/tools/federation-api/pyproject.toml b/tools/federation-api/pyproject.toml
+index 4ac6ad5c..b7e8d367 100644
+--- a/tools/federation-api/pyproject.toml
++++ b/tools/federation-api/pyproject.toml
+@@ -53,6 +53,11 @@ version-file = "app/_version.py"  # useful for accessing dynamically calculated
+ 
+ [tool.hatch.version.raw-options]
+ local_scheme = "no-local-version"  # do not append local version info to the version string to avoid PyPI upload errors
++# Monorepo and old repository: find the git root above this folder, and read this package's
++# tags (federation-api-v<version> in the monorepo, v<version> in the old repository)
++search_parent_directories = true
++tag_regex = "^(?:federation-api-)?v(?P<version>\\d+(?:\\.\\d+){0,2}[^\\+]*)(?:\\+.*)?$"
++git_describe_command = "git describe --dirty --tags --long --match 'federation-api-v*' --match 'v*'"
+ 
+ [tool.black]
+ line-length = 79
+-- 
+2.39.5
+
