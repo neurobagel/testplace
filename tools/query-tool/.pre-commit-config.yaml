@@ -1,0 +1,49 @@
+# Commit hooks for the query tool (pre-commit). In the monorepo, the root
+# .pre-commit-config.yaml runs this file from this folder (scripts/tool-pre-commit.sh).
+# The same checks as the husky hooks and lint-staged config (.husky/, lint-staged.config.js),
+# plus the spelling check that ran in CI (codespell.yml). They need `npm ci` in this folder.
+# husky keeps working on its own; use one or the other.
+default_install_hook_types: [pre-commit, post-merge]
+default_stages: [pre-commit]
+
+ci:
+  # pre-commit.ci has no node_modules
+  skip: [typecheck, lint, format]
+
+repos:
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.3
+    hooks:
+      - id: codespell
+        args: [--config=.codespellrc]
+        # .codespellrc's `skip` globs do not match the file paths pre-commit passes
+        exclude: (^|/)package-lock\.json$|\.css$|^\.codespellrc$
+
+  - repo: local
+    hooks:
+      # lint-staged: typecheck and lint when a ts/tsx file changes, format check on any change
+      - id: typecheck
+        name: typecheck
+        language: system
+        entry: npm run typecheck
+        files: \.(ts|tsx)$
+        pass_filenames: false
+      - id: lint
+        name: lint
+        language: system
+        entry: npm run lint:check
+        files: \.(ts|tsx)$
+        pass_filenames: false
+      - id: format
+        name: format check
+        language: system
+        entry: npm run format:check
+        pass_filenames: false
+      # .husky/post-merge: reinstall the dependencies when package.json changed in the merge
+      - id: npm-ci-after-merge
+        name: npm ci after merge
+        language: system
+        entry: bash -c 'git diff --quiet ORIG_HEAD HEAD -- package.json || npm ci'
+        stages: [post-merge]
+        always_run: true
+        pass_filenames: false

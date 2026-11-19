@@ -1,0 +1,80 @@
+# Root pre-commit configuration of the monorepo: install once at the root with
+#   pre-commit install
+# (pre-commit and post-merge hooks).
+#
+# Each tool keeps its own .pre-commit-config.yaml (the same file its old repository uses).
+# The "tool" hooks below run those configs: scripts/tool-pre-commit.sh runs a tool's config
+# from inside its folder, on the tool's changed files, exactly as in the old repository.
+# The other hooks check the repository-wide files. In CI the hooks run in the pre-commit
+# job of .github/workflows/pr-checks.yml (pre-commit.ci cannot run the tool hooks: they
+# install their hook environments while running).
+default_install_hook_types: [pre-commit, post-merge]
+default_stages: [pre-commit]
+
+repos:
+  # --- the tools' own configurations ------------------------------------------------------
+  - repo: local
+    hooks:
+      - id: api
+        name: api (tools/api/.pre-commit-config.yaml)
+        language: python
+        additional_dependencies: [pre-commit==4.7.0]
+        entry: scripts/tool-pre-commit.sh tools/api
+        files: ^tools/api/
+        require_serial: true
+      - id: federation-api
+        name: federation-api (tools/federation-api/.pre-commit-config.yaml)
+        language: python
+        additional_dependencies: [pre-commit==4.7.0]
+        entry: scripts/tool-pre-commit.sh tools/federation-api
+        files: ^tools/federation-api/
+        require_serial: true
+      - id: configure-nb
+        name: configure-nb (tools/configure-nb/.pre-commit-config.yaml)
+        language: python
+        additional_dependencies: [pre-commit==4.7.0]
+        entry: scripts/tool-pre-commit.sh tools/configure-nb
+        files: ^tools/configure-nb/
+        require_serial: true
+      # query-tool's hooks run its npm scripts: run `npm ci` in tools/query-tool once.
+      - id: query-tool
+        name: query-tool (tools/query-tool/.pre-commit-config.yaml)
+        language: python
+        additional_dependencies: [pre-commit==4.7.0]
+        entry: scripts/tool-pre-commit.sh tools/query-tool
+        files: ^tools/query-tool/
+        require_serial: true
+      # query-tool's post-merge hook (its husky post-merge): reinstall its dependencies when
+      # its package.json changed in the merge.
+      - id: query-tool-npm-ci-after-merge
+        name: query-tool npm ci after merge
+        language: system
+        entry: bash -c 'git diff --quiet ORIG_HEAD HEAD -- tools/query-tool/package.json || npm --prefix tools/query-tool ci'
+        stages: [post-merge]
+        always_run: true
+        pass_filenames: false
+
+  # --- repository-wide files -----------------------------------------------------------------
+  - repo: https://github.com/python-jsonschema/check-jsonschema
+    rev: 0.39.0
+    hooks:
+      - id: check-github-workflows
+        files: ^\.github/workflows/[^/]+\.ya?ml$
+      - id: check-dependabot
+
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.12
+    hooks:
+      - id: actionlint
+        files: ^\.github/workflows/[^/]+\.ya?ml$
+
+  - repo: local
+    hooks:
+      # Configs shared by several tools: shared/ -> the copies listed in shared/files.yaml
+      - id: sync-shared
+        name: shared configs copied into the tools
+        language: python
+        additional_dependencies: [pyyaml==6.0.3]
+        entry: python scripts/sync-shared.py
+        always_run: true
+        pass_filenames: false
