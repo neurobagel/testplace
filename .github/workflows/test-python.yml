@@ -1,0 +1,88 @@
+name: test python (reusable)
+
+# Tests one Python tool with its own locked dependencies, on the Python versions of the
+# tool's own test workflow (tools/<tool>/.github/workflows/test.yaml, the old repository's CI):
+# one list for both CIs. See DEVELOPING.md, "Running tests".
+on:
+  workflow_call:
+    inputs:
+      tool:
+        description: Tool folder name under tools/ (e.g. api)
+        required: true
+        type: string
+      pytest-args:
+        description: Test selection (service-dependent tests are deselected here)
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  versions:
+    runs-on: ubuntu-latest
+    outputs:
+      python: ${{ steps.read.outputs.python }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Read the Python versions from the tool's test workflow
+        id: read
+        env:
+          WORKFLOW: tools/${{ inputs.tool }}/.github/workflows/test.yaml
+        run: |
+          python="$(uv run --no-project --quiet --with pyyaml==6.0.3 python - "$WORKFLOW" <<'PY'
+          import json, sys, yaml
+          jobs = (yaml.safe_load(open(sys.argv[1])) or {}).get("jobs") or {}
+          found = [j["strategy"]["matrix"]["python-version"] for j in jobs.values()
+                   if isinstance(((j.get("strategy") or {}).get("matrix") or {}).get("python-version"), list)]
+          if len(found) != 1 or not found[0]:
+              sys.exit(f"{sys.argv[1]}: expected exactly one job with a python-version list")
+          print(json.dumps([str(v) for v in found[0]]))
+          PY
+          )"
+          echo "Python versions: $python"
+          echo "python=$python" >> "$GITHUB_OUTPUT"
+
+  pytest:
+    needs: versions
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ${{ fromJSON(needs.versions.outputs.python) }}
+    defaults:
+      run:
+        working-directory: tools/${{ inputs.tool }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # full history: hatch-vcs reads the package version from its tags
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python ${{ matrix.python-version }} with uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies (locked)
+        run: uv sync --python ${{ matrix.python-version }} --group dev
+
+      - name: Test with pytest
+        run: uv run --python ${{ matrix.python-version }} pytest ${{ inputs.pytest-args }} --cov --cov-branch --cov-report=xml
+
+      - name: Upload results to Codecov
+        uses: codecov/codecov-action@v7
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: ${{ inputs.tool }}
+          files: tools/${{ inputs.tool }}/coverage.xml

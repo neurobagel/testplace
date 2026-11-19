@@ -1,0 +1,32 @@
+name: api
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tools/api/**"
+      - "recipes/**"
+      - "examples/**"
+      - ".github/workflows/api.yml"
+      - ".github/workflows/test-python.yml"
+  pull_request:
+    paths:
+      - "tools/api/**"
+      - "recipes/**"
+      - "examples/**"
+      - ".github/workflows/api.yml"
+      - ".github/workflows/test-python.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    uses: ./.github/workflows/test-python.yml
+    with:
+      tool: api
+      # Tests marked `integration` need a running graph store (service-dependent): skipped
+      # during the migration, they move to the global integration test suite.
+      pytest-args: -m "not integration"
+    secrets: inherit

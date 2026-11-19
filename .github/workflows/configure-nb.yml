@@ -1,0 +1,25 @@
+name: configure-nb
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tools/configure-nb/**"
+      - ".github/workflows/configure-nb.yml"
+      - ".github/workflows/test-python.yml"
+  pull_request:
+    paths:
+      - "tools/configure-nb/**"
+      - ".github/workflows/configure-nb.yml"
+      - ".github/workflows/test-python.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    uses: ./.github/workflows/test-python.yml
+    with:
+      tool: configure-nb
+    secrets: inherit
