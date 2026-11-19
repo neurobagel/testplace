@@ -1,0 +1,44 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "397d5d2f31f11b5e6525ddb284881be88149448d",
+  "separate-pull-requests": false,
+  "bump-minor-pre-major": true,
+  "include-component-in-tag": true,
+  "include-v-in-tag": true,
+  "tag-separator": "-",
+  "changelog-sections": [
+    { "type": "feat", "section": "🚀 Enhancements" },
+    { "type": "fix", "section": "🐛 Bug Fixes" },
+    { "type": "perf", "section": "🏎 Performance Improvements" },
+    { "type": "refactor", "section": "🏠 Internal" },
+    { "type": "revert", "section": "🏠 Internal" },
+    { "type": "docs", "section": "📝 Documentation", "hidden": true },
+    { "type": "test", "section": "🧪 Tests", "hidden": true },
+    { "type": "build", "section": "🔩 Dependency Updates", "hidden": true },
+    { "type": "chore", "section": "🏠 Internal", "hidden": true },
+    { "type": "ci", "section": "🏠 Internal", "hidden": true },
+    { "type": "style", "section": "🏠 Internal", "hidden": true }
+  ],
+  "packages": {
+    "recipes": {
+      "release-type": "simple",
+      "component": "recipes"
+    },
+    "tools/api": {
+      "release-type": "simple",
+      "component": "api"
+    },
+    "tools/federation-api": {
+      "release-type": "simple",
+      "component": "federation-api"
+    },
+    "tools/query-tool": {
+      "release-type": "node",
+      "component": "query-tool"
+    },
+    "tools/configure-nb": {
+      "release-type": "simple",
+      "component": "configure-nb"
+    }
+  }
+}

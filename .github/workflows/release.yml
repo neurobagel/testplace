@@ -1,0 +1,94 @@
+name: release
+
+# release-please keeps one combined release PR for all tools and recipes (versions,
+# changelogs). Merging it makes release-please create one GitHub Release, and with it the
+# tag <component>-v<version>, per released folder. Its outputs then start the publishing
+# jobs below.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      recipes: ${{ steps.rp.outputs['recipes--release_created'] }}
+      recipes-version: ${{ steps.rp.outputs['recipes--version'] }}
+      api: ${{ steps.rp.outputs['tools/api--release_created'] }}
+      api-version: ${{ steps.rp.outputs['tools/api--version'] }}
+      federation-api: ${{ steps.rp.outputs['tools/federation-api--release_created'] }}
+      federation-api-version: ${{ steps.rp.outputs['tools/federation-api--version'] }}
+      query-tool: ${{ steps.rp.outputs['tools/query-tool--release_created'] }}
+      query-tool-version: ${{ steps.rp.outputs['tools/query-tool--version'] }}
+      configure-nb: ${{ steps.rp.outputs['tools/configure-nb--release_created'] }}
+      configure-nb-version: ${{ steps.rp.outputs['tools/configure-nb--version'] }}
+    steps:
+      - name: Generate a token
+        id: generate-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.NB_BOT_ID }}
+          private-key: ${{ secrets.NB_BOT_KEY }}
+
+      # The bot token makes release PRs trigger CI (GITHUB_TOKEN PRs do not).
+      - name: Run release-please
+        id: rp
+        uses: googleapis/release-please-action@v5
+        with:
+          token: ${{ steps.generate-token.outputs.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      - name: Show outputs
+        env:
+          OUTPUTS: ${{ toJSON(steps.rp.outputs) }}
+        run: echo "$OUTPUTS"
+
+      - name: Checkout (with the new tags)
+        if: steps.rp.outputs.releases_created == 'true'
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # The auto changelogs used before the monorepo listed the authors of each release;
+      # release-please does not. Adds "#### Authors: N" (the GitHub users who authored the
+      # released commits and the commits of their pull requests; bots left out) to each new
+      # GitHub Release. Safe to rerun: a release that has the list is skipped.
+      - name: Add the authors to the GitHub Releases
+        if: steps.rp.outputs.releases_created == 'true'
+        env:
+          GH_TOKEN: ${{ steps.generate-token.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          PATHS: ${{ steps.rp.outputs.paths_released }}
+          OUTPUTS: ${{ toJSON(steps.rp.outputs) }}
+        run: |
+          for path in $(jq -r '.[]' <<<"$PATHS"); do
+            tag="$(jq -r --arg k "${path}--tag_name" '.[$k]' <<<"$OUTPUTS")"
+            body="$(gh release view "$tag" --json body --jq .body)"
+            if grep -q '^#### Authors:' <<<"$body"; then echo "$tag: authors already listed"; continue; fi
+            prev="$(git describe --tags --abbrev=0 --match "${tag%-v*}-v*" "${tag}^" 2>/dev/null || true)"
+            : >authors.tsv
+            for sha in $(git rev-list "${prev:+${prev}..}${tag}" -- "$path"); do
+              gh api "repos/${GITHUB_REPOSITORY}/commits/${sha}" --jq '[.author.login // "", .commit.author.name] | @tsv' >>authors.tsv
+              for pr in $(gh api "repos/${GITHUB_REPOSITORY}/commits/${sha}/pulls" --jq '.[].number'); do
+                gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${pr}/commits" \
+                  --jq '.[] | [.author.login // "", .commit.author.name] | @tsv' >>authors.tsv
+              done
+            done
+            list="$(awk -F'\t' '$1 != "" && $1 !~ /\[bot\]$/ && !seen[$1]++ {
+                      if ($2 == "" || $2 == $1) print "- [@" $1 "](https://github.com/" $1 ")";
+                      else print "- " $2 " ([@" $1 "](https://github.com/" $1 "))" }' authors.tsv | sort -f)"
+            if [ -z "$list" ]; then echo "$tag: no authors found"; continue; fi
+            printf '%s\n\n#### Authors: %s\n\n%s\n' "$body" "$(wc -l <<<"$list")" "$list" >notes.md
+            gh release edit "$tag" --notes-file notes.md
+            echo "$tag: $(wc -l <<<"$list") author(s)"
+          done
