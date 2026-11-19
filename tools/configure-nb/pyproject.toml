@@ -55,6 +55,11 @@ version-file = "configure_nb/_version.py"  # useful for accessing dynamically ca
 
 [tool.hatch.version.raw-options]
 local_scheme = "no-local-version"  # do not append local version info to the version string to avoid PyPI upload errors
+# Monorepo and old repository: find the git root above this folder, and read this package's
+# tags (configure-nb-v<version> in the monorepo, v<version> in the old repository)
+search_parent_directories = true
+tag_regex = "^(?:configure-nb-)?v(?P<version>\\d+(?:\\.\\d+){0,2}[^\\+]*)(?:\\+.*)?$"
+git_describe_command = "git describe --dirty --tags --long --match 'configure-nb-v*' --match 'v*'"
 
 [tool.black]
 line-length = 79
