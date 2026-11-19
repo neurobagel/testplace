@@ -1,0 +1,221 @@
+# Developing in the Neurobagel monorepo
+
+This guide covers what is shared across the folders in this repository. Each tool's own setup and test commands are in the "Working in the monorepo" section of its README.
+
+## Layout
+
+| Path | What |
+|---|---|
+| `tools/<tool>/` | One tool, with its full history: `api`, `federation-api`, `query-tool`, `configure-nb` |
+| `recipes/` | Docker Compose recipes for deploying Neurobagel, with their full history (formerly neurobagel/recipes) |
+| `examples/` | Example data and API responses for tests (formerly neurobagel/neurobagel_examples) |
+| `shared/` | Configs shared by several tools, copied into the tool folders (see "Shared configs") |
+| `scripts/` | Repository scripts: `tool-pre-commit.sh` (runs a tool's own commit hooks), `sync-shared.py` (shared configs) |
+| `.github/` | CI, release and publishing workflows for the whole repository |
+| `migration/` | Records and scripts of the migration to the monorepo (temporary) |
+| `DEVELOPING.md` | This guide |
+
+Inside the tools, the old submodule folders are now symlinks: `tools/api/recipes -> ../../recipes` and `tools/api/neurobagel_examples -> ../../examples` (the same in `tools/query-tool`). On Windows, enable symlinks (`git config core.symlinks true`, Developer Mode) before cloning.
+
+Each tool folder is self-contained: its configs (`pyproject.toml`, `.flake8`, `.codespellrc`, prettier, eslint, ...), its `.pre-commit-config.yaml` and its `.github/` folder stay inside it. The tool's `.github/` and `.gitmodules` are not used in this repository, but they are not dead code: during the monorepo trial they are the old repositories' CI and setup.
+
+## Setup
+
+```bash
+git clone https://github.com/neurobagel/neurobagel.git
+cd neurobagel
+uv tool install pre-commit   # or: pipx install pre-commit
+pre-commit install           # installs the pre-commit and post-merge hooks, once for all tools
+```
+
+Requirements: [uv](https://docs.astral.sh/uv/) for the Python tools, Node.js 20 and npm for query-tool, Docker for the images and the api integration tests.
+
+Each Python tool has its own `uv.lock` and environment; query-tool has its own `package-lock.json` and `node_modules`. There is no root workspace. Run each tool's commands from its folder.
+
+### Local development environment
+
+Set up only the tools you work on, each in its own folder. The tool's README has the details (configuration, `.env` files, running the app); its "Working in the monorepo" section lists what differs here.
+
+**Python tools** (api, federation-api, configure-nb), with [uv](https://docs.astral.sh/uv/):
+
+```bash
+cd tools/api                          # or tools/federation-api, tools/configure-nb
+uv sync --python 3.12 --group dev     # creates tools/api/.venv with the locked dependencies and the tool itself (editable)
+uv run --python 3.12 pytest           # tests
+uv run --python 3.12 python -m app.main              # api: run the app (needs a .env, see its README)
+uv run --python 3.12 uvicorn app.main:app            # federation-api: run the app (see its README)
+uv run --python 3.12 configure-nb --help             # configure-nb: run the CLI
+```
+
+- Pick a Python version from the tool's own list (`tools/<tool>/.github/workflows/test.yaml`); uv downloads it if needed. Pass the same `--python` to `uv run`, or activate the environment (`source .venv/bin/activate`) and run `pytest` directly.
+- In an editor, select `tools/<tool>/.venv` as the interpreter (open the tool folder as the project, or set the interpreter path).
+- After changing dependencies in `pyproject.toml`, run `uv lock` in the tool folder and commit `uv.lock`.
+- The version (hatch-vcs) comes from the tool's tags, so work in a clone with tags (the default `git clone`).
+
+**query-tool** (TypeScript, React), with Node.js 20 and npm:
+
+```bash
+cd tools/query-tool
+npm ci                                                    # node_modules from package-lock.json
+echo "NB_API_QUERY_URL=https://federate.neurobagel.org/" > .env
+npm run dev                                               # development server (Vite), http://localhost:5173
+npm run typecheck && npm run lint:check && npm run format:check
+npx cypress open                                          # component and e2e tests, interactive
+```
+
+- `npm ci` also runs husky's `prepare` script; here it finds no `.git` in the folder and does nothing (the commit hooks come from pre-commit, below).
+- After changing dependencies, commit `package.json` and `package-lock.json` together (`npm install <package>` updates both).
+
+### Commit hooks
+
+Each tool keeps its own `.pre-commit-config.yaml` in its folder: the same file its old repository uses, with its own linters and configs. The root `.pre-commit-config.yaml` runs them, so one `pre-commit install` at the root covers every tool:
+
+- one root hook per tool (`api`, `federation-api`, `configure-nb`, `query-tool`) runs that tool's config, on the tool's changed files, with `scripts/tool-pre-commit.sh`. The script runs the tool's hooks from inside the tool folder, exactly as in the old repository (pre-commit itself always runs hooks from the repository root, where the tools' relative config paths would not resolve);
+- the other root hooks check the repository-wide files (workflows, the Dependabot config, shared configs);
+- a post-merge hook runs `npm ci` in `tools/query-tool` after a pull or merge that changes its `package.json`.
+
+Commands:
+
+- `pre-commit run --all-files` checks everything; `pre-commit run query-tool --all-files` only one tool.
+- `scripts/tool-pre-commit.sh tools/api` runs one tool's hooks on all its files; `TOOL_PRE_COMMIT_ARGS=flake8 scripts/tool-pre-commit.sh tools/api` only one of its hooks.
+- query-tool's hooks (typecheck, lint, format) use its `node_modules`: run `npm ci` in `tools/query-tool` once.
+- In CI the hooks run in the `pre-commit` job of the `pr checks` workflow, on all files.
+
+## Running tests
+
+| Tool | CI test command (in the tool's folder) |
+|---|---|
+| api | `uv run --python <version> pytest -m "not integration"` |
+| federation-api | `uv run --python <version> pytest` |
+| configure-nb | `uv run --python <version> pytest` |
+| query-tool | `npm run lint:check`, `npm run format:check`, `npx cypress run --component`, `npx cypress run --e2e` (against `npm run preview`, with a `.env`) |
+
+**Python versions are set per tool**, in the tool's own test workflow: the `python-version` list of `tools/<tool>/.github/workflows/test.yaml`. That file runs the old repository's CI, and the monorepo CI reads the same list, so one edit changes both. Pin the version locally too, because uv otherwise picks whatever Python it finds:
+
+```bash
+cd tools/api
+uv sync --python 3.12 --group dev
+uv run --python 3.12 pytest
+```
+
+api's `integration` tests need a running graph store and are skipped in CI during the migration; they will move to a single global integration test suite. To run them locally, see the api README.
+
+A tool's CI runs when files in that tool change, or when what it uses changes: `recipes/` and `examples/` for api and query-tool, the tool's workflow, and the shared test workflow (`.github/workflows/test-python.yml`, `test-node.yml`). Link checks and the PR checks run on every PR.
+
+recipes has no CI here yet: its own workflows (`recipes/.github/workflows`) still run in the old recipes repository, on the mirror's pull requests and on their schedule (the compatibility test of the `latest` and `nightly` images).
+
+`migration/check-unchanged.sh` (temporary, removed with `migration/`) lists the changes the migration itself made inside the imported folders, against `migration/allowed-changes.txt`. It is a migration check, run locally by `migration/verify.sh`, not in CI.
+
+## Shared configs
+
+A config used by one tool lives in that tool's folder, and only there. Change it together with the code it affects, in the same PR.
+
+A config shared by several tools lives once in `shared/`, and `shared/files.yaml` lists which tool folders get a copy of it:
+
+```yaml
+- source: shared/codespell-ignore.txt
+  copies:
+    - tools/api/codespell-ignore.txt
+    - tools/federation-api/codespell-ignore.txt
+```
+
+`scripts/sync-shared.py` writes the copies. It runs as a commit hook (it updates the copies; commit them) and in the `pre-commit` CI job (fails if a copy differs). The copies are ordinary files in the tool folders, so each tool stays self-contained and its old repository gets them too. Never point a tool config at a file outside its folder: the old repository has no such file.
+
+## Pull request titles
+
+PRs are squash-merged by default, and the PR title becomes the commit message. release-please reads these messages to decide releases, so **the PR title must be a [conventional commit](https://www.conventionalcommits.org/)**:
+
+```
+<type>[(<scope>)][!]: <description>
+```
+
+The type decides the release and the changelog section:
+
+| Type | Release | Changelog section |
+|---|---|---|
+| `feat` | minor | 🚀 Enhancements |
+| `fix` | patch | 🐛 Bug Fixes |
+| `perf` | patch | 🏎 Performance Improvements |
+| `refactor`, `revert` | patch | 🏠 Internal |
+| `docs`, `test`, `chore`, `ci`, `build`, `style` | none | not listed |
+
+`!` marks a breaking change ("⚠ BREAKING CHANGES" in the changelog); while a tool is on 0.x, a breaking change bumps the minor version. Use `refactor` for an internal change that should be released (the old `pr-internal` label), and `chore` for one that should not (`skip-release`).
+
+Optional scope: `api`, `federation-api`, `query-tool`, `configure-nb`, `recipes`, `examples`, or `deps` (Dependabot). Which tool a commit releases is decided by **the files it changes**, not by its scope.
+
+The `pr checks` workflow rejects titles that are not conventional commits (with [action-semantic-pull-request](https://github.com/amannn/action-semantic-pull-request)). Its `release-preview` job writes what release-please would propose for the PR's commits (versions and changelog entries per tool) to the job summary.
+
+### PRs that change more than one tool
+
+A squash merge would give every changed tool the same changelog entry and version bump. So a PR with releasable changes for more than one tool must:
+
+1. contain **one conventional commit per tool**, each touching only that tool's folder,
+2. have a **non-releasing title** (`chore:`, `ci:`, ...),
+3. be merged with a **merge commit** (never squash, never rebase).
+
+This is a convention, checked by the reviewer (the PR template has a checklist item; the release preview shows the per-tool entries a merge commit would give). If such a PR is squashed by mistake with a non-releasing title, nothing is released; release the tools with a follow-up commit per tool. Multi-tool PRs that release nothing (`chore`, `ci`, `docs`, `build`, `test` only) can be squashed.
+
+release-please also reads an override block from a merged PR's description (the marker `BEGIN\_COMMIT\_OVERRIDE`, written here with escaped underscores). Never write the marker literally unless you mean to override the commit messages, and never in a multi-tool PR: the override applies to every tool the PR touches.
+
+## Releases
+
+Each tool and recipes has its own version, changelog (`<folder>/CHANGELOG.md`), tags `<name>-v<version>` and GitHub Releases.
+
+1. On every push to `main`, release-please updates **one combined release PR** ("chore: release main") with the next version and changelog entry of every tool that has releasable commits since its last release.
+2. Merging that PR (squash) updates `.release-please-manifest.json`, the changelogs and query-tool's `package.json`. The `release` workflow then runs release-please again, which creates one GitHub Release, and with it the tag `<name>-v<version>`, per released tool, and adds an "Authors" list (the authors of the released PRs) to each GitHub Release.
+3. In the same workflow run, release-please's outputs start publishing for each released tool:
+   - api, federation-api, query-tool: Docker images `v<version>` and `latest` (`docker-build.yml`)
+   - configure-nb: PyPI (`configure-nb-release.yml`)
+   - query-tool: the site on Netlify (`sites.yml`; it can also be run by hand for a released version)
+   - recipes: nothing beyond the GitHub Release
+
+   If a publishing job fails, use "Re-run failed jobs" on that `release` run.
+4. Every push to `main` that changes an image tool also builds its `nightly` image, after its tests pass (the `nightly` job in the tool's workflow).
+
+The changelogs keep the sections of the earlier auto changelogs. Unlike auto, release-please does not list `docs` and `test` changes (they never trigger a release, so they are hidden), and it does not comment "released in" on PRs.
+
+Python versions come from the tags through hatch-vcs (`<tool>-v*` tags here, `v*` tags in the old repository; the same settings work in both), so CI checkouts that build a Python package need the full history (`fetch-depth: 0`). query-tool's version lives in `package.json` and is bumped by release-please.
+
+Publishing targets come from repository variables, so the same workflows publish to test targets during validation:
+
+| Variable | Validation | Production |
+|---|---|---|
+| `IMAGE_REGISTRY` | `ghcr.io` | `docker.io` |
+| `IMAGE_NAMESPACE` | `neurobagel` | `neurobagel` |
+| `PYPI_REPOSITORY_URL` | `https://test.pypi.org/legacy/` (with a TestPyPI `PYPI_TOKEN` repository secret) | unset (PyPI) |
+| `SITE_DEPLOY` | `false` | `true` |
+
+`images-validation.yml` (manual, temporary: for the migration's validation phase) builds and pushes every image with a `validation-<sha>` tag.
+
+Good to know:
+
+- The release PR is only updated when new releasable commits land on `main`. A `ci:` or `chore:` fix does not touch it, so its CI does not rerun.
+- "Re-run jobs" on a PR reuses the old test merge with the old base. To test against the current `main`, close and reopen the PR, or push to it.
+- Release PR changelogs link to a compare view of the new tag, which only exists after the merge; link checks ignore these links.
+
+## Dependency updates
+
+One `.github/dependabot.yml` covers every folder, checked weekly. Its PRs have `build` titles, so they release nothing.
+
+| Ecosystem | Folders | Updates |
+|---|---|---|
+| GitHub Actions | `/` | All |
+| npm | `tools/query-tool`, `recipes` | Minor and patch, grouped into production and development dependencies; majors ignored |
+| uv | `tools/api`, `tools/federation-api`, `tools/configure-nb` | Security updates only |
+| Docker | `tools/api`, `tools/federation-api`, `tools/query-tool` | Base images, grouped; majors ignored, and minor updates of `python` (they change the runtime Python) |
+
+## Required status checks
+
+None for now. When they are added, use **one always-running aggregator job** as the only required check. Path-filtered workflows that are skipped never report a status, so requiring them directly would block every PR that does not touch that tool.
+
+## Repository settings
+
+Applied by a maintainer with `migration/settings.sh` (see the script for the full list):
+
+- Merge commits and squash merges allowed, rebase merges off. Squash is the default, with the PR title as the commit message and an empty body (so conventional-commit lines from individual commits cannot trigger releases).
+- Branch protection on `main`: a PR with one approving review; no required status checks.
+- Labels used by release-please (`autorelease: pending`, `autorelease: tagged`), Dependabot and bots (`_bot`, `dependencies`), external PRs (`_community`) and the stale workflow (`_flag:stale`).
+- Repository variables (table above).
+- Dependabot security updates and CodeQL default setup on.
+
+Done by hand: give the repository access to the org secrets and the Neurobagel bot app; create the Netlify site and its site-ID secret (`NETLIFY_QUERY_SITE_ID`) before switching `SITE_DEPLOY` on; a PyPI token for configure-nb (`PYPI_TOKEN`).
