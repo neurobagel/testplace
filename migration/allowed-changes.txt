@@ -1,0 +1,17 @@
+# Paths in the imported packages (tools/<name>/, recipes/) that may differ from upstream,
+# and why (path<TAB>reason). Enforced by check-unchanged.sh (locally, in verify.sh).
+# Every entry must be required by the migration and work unchanged in the old repository.
+
+tools/api/recipes	submodule gitlink replaced by a symlink to recipes/
+tools/api/neurobagel_examples	submodule gitlink replaced by a symlink to examples/
+tools/query-tool/recipes	submodule gitlink replaced by a symlink to recipes/
+tools/query-tool/neurobagel_examples	submodule gitlink replaced by a symlink to examples/
+tools/api/pyproject.toml	hatch-vcs: git root searched upward, api-v* tags here and v* tags in the old repository
+tools/federation-api/pyproject.toml	hatch-vcs: git root searched upward, federation-api-v* tags here and v* tags in the old repository
+tools/configure-nb/pyproject.toml	hatch-vcs: git root searched upward, configure-nb-v* tags here and v* tags in the old repository
+tools/query-tool/.pre-commit-config.yaml	prek workspace: query-tool's lint-staged checks and post-merge npm ci as a pre-commit config (husky stays for the old repository)
+tools/api/README.md	README: "Working in the monorepo" section (how to clone, set up and test this tool in the monorepo)
+tools/federation-api/README.md	README: "Working in the monorepo" section (how to clone, set up and test this tool in the monorepo)
+tools/query-tool/README.md	README: "Working in the monorepo" section (how to clone, set up and test this tool in the monorepo)
+tools/configure-nb/README.md	README: "Working in the monorepo" section (how to clone, set up and test this tool in the monorepo)
+recipes/README.md	README: "Working in the monorepo" section (where recipes lives now, how to test it in the monorepo)

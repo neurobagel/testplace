@@ -1,0 +1,198 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 19 Nov 2026 16:39:21 +0000
+Subject: [PATCH 7/8] docs: add a "Working in the monorepo" section to each
+ tool's and recipes' README
+
+Where development happens now (the old repository is a read-only mirror of the folder), and how to clone, set up and test the tool in the monorepo: the symlinked recipes/ and examples/ folders, the per-tool Python versions, the commit hooks (prek) and where releases are made. recipes: deploying from the monorepo folder. The commands are checked word for word in a fresh clone by migration/verify.sh.
+---
+ recipes/README.md              | 25 +++++++++++++++++++++++++
+ tools/api/README.md            | 34 ++++++++++++++++++++++++++++++++++
+ tools/configure-nb/README.md   | 21 +++++++++++++++++++++
+ tools/federation-api/README.md | 21 +++++++++++++++++++++
+ tools/query-tool/README.md     | 33 +++++++++++++++++++++++++++++++++
+ 5 files changed, 134 insertions(+)
+
+diff --git a/recipes/README.md b/recipes/README.md
+index 32a3cc57..de2be50b 100644
+--- a/recipes/README.md
++++ b/recipes/README.md
+@@ -39,3 +39,28 @@ See comments in the `.env` file for more information.
+     ```
+ 
+ A log file `DEPLOY.log` will be automatically created under `scripts/logs/` with a copy of the STDOUT from the automatic deployment process.
++
++## Working in the monorepo
++
++Development happens in the Neurobagel monorepo ([neurobagel/neurobagel](https://github.com/neurobagel/neurobagel)), in `recipes`; [neurobagel/recipes](https://github.com/neurobagel/recipes) is a read-only mirror of that folder. Clone the monorepo to make changes:
++
++```bash
++git clone https://github.com/neurobagel/neurobagel.git
++cd neurobagel
++```
++
++To deploy Neurobagel, nothing changes: follow the instructions above or the [documentation](https://neurobagel.org/user_guide/getting_started/).
++
++To try a change to the recipes, deploy from the monorepo's `recipes/` folder. From the monorepo root:
++
++```bash
++cd recipes
++cp template.env .env
++cp local_nb_nodes.template.json local_nb_nodes.json
++docker compose up -d
++timeout 900 bash -c 'until grep "Finished setting up the Neurobagel graph backend." scripts/logs/DEPLOY.log >/dev/null 2>&1; do sleep 5; done'
++docker compose ps
++docker compose down -v
++```
++
++CI runs the recipes' tests from `.github/workflows/recipes.yml` in the monorepo: a two-node deployment, the Cypress end-to-end tests, and a scheduled compatibility test of the `latest` and `nightly` images. Pull request titles must be conventional commits, and releases (tags `recipes-v<version>`) are made from the monorepo; see [DEVELOPING.md](https://github.com/neurobagel/neurobagel/blob/main/DEVELOPING.md).
+diff --git a/tools/api/README.md b/tools/api/README.md
+index fb9a57a1..5754da8f 100644
+--- a/tools/api/README.md
++++ b/tools/api/README.md
+@@ -256,6 +256,40 @@ you must also [update the lockfile](https://docs.astral.sh/uv/concepts/projects/
+ uv lock
+ ```
+ 
++## Working in the monorepo
++
++Development happens in the Neurobagel monorepo ([neurobagel/neurobagel](https://github.com/neurobagel/neurobagel)), in `tools/api`; [neurobagel/api](https://github.com/neurobagel/api) is a read-only mirror of that folder. Clone the monorepo to make changes:
++
++```bash
++git clone https://github.com/neurobagel/neurobagel.git
++cd neurobagel
++```
++
++Differences from the instructions above:
++
++- `recipes` and `neurobagel_examples` are no longer submodules. They are symlinks to the monorepo's `recipes/` and `examples/` folders, so no `git submodule update` is needed.
++- The Python versions CI tests are listed in `.github/workflows/test.yaml` (in this folder); pin one of them, because uv otherwise picks whatever Python it finds. Run the commands from `tools/api`.
++
++From the monorepo root:
++
++```bash
++cd tools/api
++uv sync --python 3.12 --group dev
++uv run --python 3.12 pytest
++```
++
++The integration tests (marked `integration`, skipped by default and in CI) need the test graph:
++
++```bash
++cd tools/api
++docker compose up -d test_graph export_datasets_metadata
++until docker compose logs test_graph | grep "FINISHED UPLOADING DATA" >/dev/null; do sleep 2; done
++uv run --python 3.12 pytest -m "integration or not integration"
++docker compose down -v
++```
++
++Commit hooks: run `prek install` once at the monorepo root; it sets up this tool's own pre-commit configuration together with the repository-wide one. Pull request titles must be conventional commits, and releases (tags `api-v<version>`) are made from the monorepo; see [DEVELOPING.md](https://github.com/neurobagel/neurobagel/blob/main/DEVELOPING.md).
++
+ ## License
+ 
+ Neurobagel API is released under the terms of the [MIT License](LICENSE)
+diff --git a/tools/configure-nb/README.md b/tools/configure-nb/README.md
+index b0cd576b..43e4fd48 100644
+--- a/tools/configure-nb/README.md
++++ b/tools/configure-nb/README.md
+@@ -51,3 +51,24 @@ uv run pre-commit install
+ ```
+ 
+ pre-commit will now run automatically whenever you run `git commit`.
++
++## Working in the monorepo
++
++Development happens in the Neurobagel monorepo ([neurobagel/neurobagel](https://github.com/neurobagel/neurobagel)), in `tools/configure-nb`; [neurobagel/configure-nb](https://github.com/neurobagel/configure-nb) is a read-only mirror of that folder. Clone the monorepo to make changes:
++
++```bash
++git clone https://github.com/neurobagel/neurobagel.git
++cd neurobagel
++```
++
++Differences from the instructions above: the Python versions CI tests are listed in `.github/workflows/test.yaml` (in this folder); pin one of them, because uv otherwise picks whatever Python it finds. Run the commands from `tools/configure-nb`.
++
++From the monorepo root:
++
++```bash
++cd tools/configure-nb
++uv sync --python 3.12 --group dev
++uv run --python 3.12 pytest
++```
++
++Commit hooks: run `prek install` once at the monorepo root; it sets up this tool's own pre-commit configuration together with the repository-wide one. Pull request titles must be conventional commits, and releases (tags `configure-nb-v<version>`) are made from the monorepo; see [DEVELOPING.md](https://github.com/neurobagel/neurobagel/blob/main/DEVELOPING.md).
+diff --git a/tools/federation-api/README.md b/tools/federation-api/README.md
+index 8b7ca91e..a80fb368 100644
+--- a/tools/federation-api/README.md
++++ b/tools/federation-api/README.md
+@@ -87,3 +87,24 @@ Also don't forget to set up pre-commit with
+ ```bash
+ uv run pre-commit install
+ ```
++
++## Working in the monorepo
++
++Development happens in the Neurobagel monorepo ([neurobagel/neurobagel](https://github.com/neurobagel/neurobagel)), in `tools/federation-api`; [neurobagel/federation-api](https://github.com/neurobagel/federation-api) is a read-only mirror of that folder. Clone the monorepo to make changes:
++
++```bash
++git clone https://github.com/neurobagel/neurobagel.git
++cd neurobagel
++```
++
++Differences from the instructions above: the Python versions CI tests are listed in `.github/workflows/test.yaml` (in this folder); pin one of them, because uv otherwise picks whatever Python it finds. Run the commands from `tools/federation-api`.
++
++From the monorepo root:
++
++```bash
++cd tools/federation-api
++uv sync --python 3.12 --group dev
++uv run --python 3.12 pytest
++```
++
++Commit hooks: run `prek install` once at the monorepo root; it sets up this tool's own pre-commit configuration together with the repository-wide one. Pull request titles must be conventional commits, and releases (tags `federation-api-v<version>`) are made from the monorepo; see [DEVELOPING.md](https://github.com/neurobagel/neurobagel/blob/main/DEVELOPING.md).
+diff --git a/tools/query-tool/README.md b/tools/query-tool/README.md
+index 4d3865e0..ec74c706 100644
+--- a/tools/query-tool/README.md
++++ b/tools/query-tool/README.md
+@@ -214,6 +214,39 @@ To run the tests execute the following command:
+ npx cypress open
+ ```
+ 
++## Working in the monorepo
++
++Development happens in the Neurobagel monorepo ([neurobagel/neurobagel](https://github.com/neurobagel/neurobagel)), in `tools/query-tool`; [neurobagel/query-tool](https://github.com/neurobagel/query-tool) is a read-only mirror of that folder. Clone the monorepo to make changes:
++
++```bash
++git clone https://github.com/neurobagel/neurobagel.git
++cd neurobagel
++```
++
++Differences from the instructions above:
++
++- `recipes` and `neurobagel_examples` are no longer submodules. They are symlinks to the monorepo's `recipes/` and `examples/` folders, so no `git submodule update` is needed.
++- The commit hooks come from this folder's `.pre-commit-config.yaml` (the same checks as the husky hooks), installed with `prek install` at the monorepo root; `npx husky init` is not needed.
++- Run the commands from `tools/query-tool`.
++
++From the monorepo root:
++
++```bash
++cd tools/query-tool
++npm ci
++npm run lint:check
++npm run format:check
++export NB_API_QUERY_URL=https://federate.neurobagel.org/
++npx cypress run --component
++NB_ENABLE_AUTH=true NB_QUERY_CLIENT_ID=mockclientid npm run build
++npm run preview &
++npx cypress run --e2e
++```
++
++Stop the preview server afterwards (for example with `fg`, then Ctrl+C).
++
++Commit hooks: run `prek install` once at the monorepo root; it sets up this tool's own pre-commit configuration together with the repository-wide one. Pull request titles must be conventional commits, and releases (tags `query-tool-v<version>`) are made from the monorepo; see [DEVELOPING.md](https://github.com/neurobagel/neurobagel/blob/main/DEVELOPING.md).
++
+ ## License
+ 
+ The query tool is released under the terms of the [MIT License](LICENSE)
+-- 
+2.39.5
+

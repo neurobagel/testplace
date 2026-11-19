@@ -1,0 +1,59 @@
+# Single map of names for the Neurobagel monorepo.
+# Scripts (import.sh, verify.sh, gen-commit-rewrites.py, scripts/mirror.py) read this file;
+# nothing else invents names.
+#
+# Per package (imported with its full history):
+#   repo        upstream repository name under `org`
+#   dir         folder in the monorepo (tools/<name> for tools; recipes at the root)
+#   tag_prefix  prefix of imported and future tags: <tag_prefix>-v<version>
+#               (also the release-please component name)
+#   artifacts   published artifact names (independent of dir and tag_prefix)
+#   symlinks    upstream submodule paths (relative to the package) replaced by a
+#               relative symlink to another folder of the monorepo (a package or a `data`
+#               folder); the mirror turns them back into gitlinks
+#
+# Packages are imported in this order. Folders that symlinks point to are mirrored first.
+
+org: neurobagel
+
+packages:
+  - repo: recipes
+    dir: recipes
+    tag_prefix: recipes
+
+  - repo: api
+    dir: tools/api
+    tag_prefix: api
+    artifacts:
+      docker: neurobagel/api
+    symlinks:
+      recipes: recipes
+      neurobagel_examples: examples
+
+  - repo: federation-api
+    dir: tools/federation-api
+    tag_prefix: federation-api
+    artifacts:
+      docker: neurobagel/federation_api
+
+  - repo: query-tool
+    dir: tools/query-tool
+    tag_prefix: query-tool
+    artifacts:
+      docker: neurobagel/query_tool
+      site: query.neurobagel.org
+    symlinks:
+      recipes: recipes
+      neurobagel_examples: examples
+
+  - repo: configure-nb
+    dir: tools/configure-nb
+    tag_prefix: configure-nb
+    artifacts:
+      pypi: configure-nb
+
+# Copied in as plain files (HEAD of `ref`), no history (the repository has no tags).
+data:
+  examples:
+    repo: neurobagel_examples
+    ref: main
