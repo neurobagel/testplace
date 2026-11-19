@@ -1,0 +1,99 @@
+name: pr checks
+
+# PRs are squash-merged with the PR title as the commit message, and release-please reads
+# the commit messages: the title must be a conventional commit. Multi-tool PRs follow the
+# merge convention in DEVELOPING.md, checked at review with the release preview below.
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  pr-title:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    steps:
+      - name: Check the PR title
+        uses: amannn/action-semantic-pull-request@v6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            perf
+            revert
+            docs
+            style
+            refactor
+            test
+            build
+            ci
+            chore
+          # tools, recipes, examples; deps for Dependabot
+          scopes: |
+            api
+            federation-api
+            query-tool
+            configure-nb
+            recipes
+            examples
+            deps
+
+  # Informational: the versions and changelog entries release-please would propose if this
+  # PR's commits landed on main as they are (a merge commit; a squash gives every changed
+  # tool the PR title's entry instead). Written to the job summary; never blocks.
+  release-preview:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+
+      - name: release-please dry run
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # PRs from forks: the branch is not in this repository, so preview main
+          TARGET: ${{ github.event.pull_request.head.repo.full_name == github.repository && github.head_ref || 'main' }}
+        run: |
+          {
+            echo "## release-please dry run on \`$TARGET\`"
+            echo
+            echo '```'
+            npx --yes release-please@17.11.2 release-pr --dry-run \
+              --token "$GITHUB_TOKEN" --repo-url "$GITHUB_REPOSITORY" --target-branch "$TARGET" 2>&1 \
+              | grep -vE '^\s*$' || true
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # The commit hooks (prek workspace: every tool's own .pre-commit-config.yaml, run from its
+  # folder, plus the root config), on all files.
+  prek:
+    if: github.event.action != 'edited'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+
+      # query-tool's hooks (typecheck, lint, format) run its npm scripts
+      - name: Install query-tool dependencies
+        working-directory: tools/query-tool
+        run: npm ci
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Run the hooks on all files
+        run: uvx prek@0.5.11 run --all-files --show-diff-on-failure

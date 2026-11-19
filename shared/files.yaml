@@ -1,0 +1,9 @@
+# Configs shared by several tools: each source file in shared/ is copied to every path in
+# `copies` (inside the tool folders) by scripts/sync-shared.py, which runs as a commit hook
+# and in CI. Edit the source, never a copy. The copies are committed, so each tool folder
+# stays self-contained (and its old repository gets them through the mirror).
+#
+# - source: shared/<file>
+#   copies:
+#     - tools/<tool>/<file>
+[]

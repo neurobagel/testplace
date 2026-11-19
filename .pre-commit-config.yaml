@@ -1,0 +1,34 @@
+# Repository-wide commit hooks, run by prek (https://github.com/j178/prek) in workspace mode.
+#
+# `prek install` at the root sets up everything: prek also finds each tool's own config
+# (tools/<tool>/.pre-commit-config.yaml) and runs it from inside the tool's folder, so the
+# tools' hooks and their configs work here exactly as in the old repositories. This file
+# only has the hooks for the repository-wide files. In CI the hooks run in the `prek` job of
+# .github/workflows/pr-checks.yml.
+default_install_hook_types: [pre-commit, post-merge]
+default_stages: [pre-commit]
+
+repos:
+  - repo: https://github.com/python-jsonschema/check-jsonschema
+    rev: 0.39.0
+    hooks:
+      - id: check-github-workflows
+        files: ^\.github/workflows/[^/]+\.ya?ml$
+      - id: check-dependabot
+
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.12
+    hooks:
+      - id: actionlint
+        files: ^\.github/workflows/[^/]+\.ya?ml$
+
+  - repo: local
+    hooks:
+      # Configs shared by several tools: shared/ -> the copies listed in shared/files.yaml
+      - id: sync-shared
+        name: shared configs copied into the tools
+        language: python
+        additional_dependencies: [pyyaml==6.0.3]
+        entry: python scripts/sync-shared.py
+        always_run: true
+        pass_filenames: false
