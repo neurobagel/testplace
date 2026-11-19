@@ -8,6 +8,7 @@ on:
       - "recipes/**"
       - "examples/**"
       - ".github/workflows/query-tool.yml"
+      - ".github/workflows/docker-build.yml"
       - ".github/workflows/test-node.yml"
   pull_request:
     paths:
@@ -15,6 +16,7 @@ on:
       - "recipes/**"
       - "examples/**"
       - ".github/workflows/query-tool.yml"
+      - ".github/workflows/docker-build.yml"
       - ".github/workflows/test-node.yml"
   workflow_dispatch:
 
@@ -31,4 +33,21 @@ jobs:
         NB_API_QUERY_URL=https://federate.neurobagel.org/
         NB_ENABLE_AUTH=true
         NB_QUERY_CLIENT_ID=mockclientid
+    secrets: inherit
+
+  # On push to main (and by hand on main): the `nightly` image, after the tests pass. As upstream:
+  # amd64 only; the app shows build:<short sha> as its version.
+  nightly:
+    needs: test
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/docker-build.yml
+    with:
+      tool: query-tool
+      image: query_tool
+      tags: type=raw,value=nightly
+      platforms: linux/amd64
+      package-json-version: build:{short-sha}
     secrets: inherit

@@ -1,0 +1,78 @@
+name: sites
+
+# Static sites on Netlify (formerly GitHub Pages; one repository can serve only one Pages
+# site, and the annotation tool's site joins later). Called by the release workflow when
+# release-please releases query-tool, or run manually for a released version. Deploys only
+# when the repository variable SITE_DEPLOY is "true".
+#   query-tool -> query.neurobagel.org (NETLIFY_QUERY_SITE_ID)
+on:
+  workflow_call:
+    inputs:
+      tool:
+        description: Tool folder name under tools/ (query-tool)
+        required: true
+        type: string
+      version:
+        description: Released version (X.Y.Z)
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tool:
+        description: Tool to deploy
+        required: true
+        type: choice
+        options: [query-tool]
+      version:
+        description: Released version to deploy (X.Y.Z; the tag <tool>-vX.Y.Z must exist)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sites-${{ inputs.tool }}
+  cancel-in-progress: true
+
+jobs:
+  query-tool:
+    if: inputs.tool == 'query-tool' && vars.SITE_DEPLOY == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tools/query-tool
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tool }}-v${{ inputs.version }}
+          persist-credentials: false
+      - name: Add prod scripts
+        run: |
+          add_script='<script async src="https://w.appzi.io/w.js?token=YVTHd"></script><script defer data-domain="query.neurobagel.org" src="https://plausible.neurobagel.org/js/script.js"></script>'
+          # Need to use single quotes around sed to avoid ! to be interpreted as a history expansion character
+          sed -i 's|<!-- REPLACE_ME_NB_QUERY_HEADER_SCRIPT_REPLACE_ME -->|'"${add_script}"'|' index.html
+      # The app displays its version; upstream set it from the release tag (vX.Y.Z)
+      - name: Set release version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          release_version="v${VERSION}"
+          jq ".version = \"$release_version\"" package.json > tmp.$$.json && mv tmp.$$.json package.json
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+      - name: Create .env file
+        run: |
+          echo -e "NB_API_QUERY_URL=https://federate.neurobagel.org/" > .env
+      - name: Install dependencies
+        run: npm ci
+      - name: Build
+        run: npm run build
+      - name: Deploy to Netlify
+        run: npx netlify-cli deploy --no-build --dir=dist --prod
+        env:
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_QUERY_SITE_ID }}
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
