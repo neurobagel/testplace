@@ -51,3 +51,24 @@ uv run pre-commit install
 ```
 
 pre-commit will now run automatically whenever you run `git commit`.
+
+## Working in the monorepo
+
+Development happens in the Neurobagel monorepo ([neurobagel/neurobagel](https://github.com/neurobagel/neurobagel)), in `tools/configure-nb`; [neurobagel/configure-nb](https://github.com/neurobagel/configure-nb) is a read-only mirror of that folder. Clone the monorepo to make changes:
+
+```bash
+git clone https://github.com/neurobagel/neurobagel.git
+cd neurobagel
+```
+
+Differences from the instructions above: the Python versions CI tests are listed in `.github/workflows/test.yaml` (in this folder); pin one of them, because uv otherwise picks whatever Python it finds. Run the commands from `tools/configure-nb`.
+
+From the monorepo root:
+
+```bash
+cd tools/configure-nb
+uv sync --python 3.12 --group dev
+uv run --python 3.12 pytest
+```
+
+Commit hooks: run `prek install` once at the monorepo root; it sets up this tool's own pre-commit configuration together with the repository-wide one. Pull request titles must be conventional commits, and releases (tags `configure-nb-v<version>`) are made from the monorepo; see [DEVELOPING.md](https://github.com/neurobagel/neurobagel/blob/main/DEVELOPING.md).
