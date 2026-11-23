@@ -16,6 +16,8 @@
 
 The query tool is a React application, developed in [TypeScript](https://www.typescriptlang.org/) using a variety of tools including [Vite](https://vitejs.dev/), [Cypress](https://www.cypress.io/), and [MUI](https://mui.com/).
 
+🦆 This line is a silly test of the monorepo mirror. It will be reverted.
+
 [Quickstart](#quickstart) |
 [Local Installation](#local-installation) |
 [Usage](#usage) |
