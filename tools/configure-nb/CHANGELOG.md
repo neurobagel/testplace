@@ -1,4 +1,13 @@
-# v0.2.0 (Tue Sep 29 2026)
+# Changelog
+
+## [0.2.1](https://github.com/neurobagel/testplace/compare/configure-nb-v0.2.0...configure-nb-v0.2.1) (2026-11-24)
+
+
+### 🏠 Internal
+
+* Add OpenSSF Scorecard badge (neurobagel/configure-nb[#55](https://github.com/neurobagel/testplace/issues/55)) ([d48f9de](https://github.com/neurobagel/testplace/commit/d48f9de896eef91e254729efb1b91fb79c1265b1))
+
+## v0.2.0 (Tue Sep 29 2026)
 
 #### 🚀 Enhancements
 
@@ -11,7 +20,7 @@
 
 ---
 
-# v0.1.2 (Wed Sep 23 2026)
+## v0.1.2 (Wed Sep 23 2026)
 
 #### 🐛 Bug Fixes
 
@@ -23,7 +32,7 @@
 
 ---
 
-# v0.1.1 (Thu Apr 23 2026)
+## v0.1.1 (Thu Apr 23 2026)
 
 :tada: This release contains work from a new contributor! :tada:
 
@@ -48,7 +57,7 @@ Thank you, Sebastian Urchs ([@surchs](https://github.com/surchs)), for all your 
 
 ---
 
-# v0.1.0 (Thu Mar 05 2026)
+## v0.1.0 (Thu Mar 05 2026)
 
 :tada: This release contains work from new contributors! :tada:
 
