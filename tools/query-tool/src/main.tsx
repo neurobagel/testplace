@@ -9,6 +9,7 @@ import './index.css';
 import theme from './theme';
 import ErrorBoundary from './components/ErrorBoundary';
 
+// Monorepo release test: this comment is a harmless change for a test release.
 const router = createBrowserRouter([
   {
     path: appBasePath,
