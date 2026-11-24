@@ -1,4 +1,14 @@
-# v0.17.1 (Fri Oct 23 2026)
+# Changelog
+
+## [0.17.2](https://github.com/neurobagel/testplace/compare/query-tool-v0.17.1...query-tool-v0.17.2) (2026-11-24)
+
+
+### 🐛 Bug Fixes
+
+* Display skeleton loading state while imaging modality metadata is loading (neurobagel/query-tool[#894](https://github.com/neurobagel/testplace/issues/894)) ([c9c2135](https://github.com/neurobagel/testplace/commit/c9c2135f5413e58dfb872e978b646fd5c8ab452c))
+* **query-tool:** add a comment for the monorepo release test ([#29](https://github.com/neurobagel/testplace/issues/29)) ([04db08f](https://github.com/neurobagel/testplace/commit/04db08faee8ab28f2ee0ddf60e03ed8de943a6c7))
+
+## v0.17.1 (Fri Oct 23 2026)
 
 #### 🚀 Enhancements
 
@@ -20,7 +30,7 @@
 
 ---
 
-# v0.17.0 (Tue Sep 15 2026)
+## v0.17.0 (Tue Sep 15 2026)
 
 #### 💥 Breaking Changes
 
@@ -41,7 +51,7 @@
 
 ---
 
-# v0.16.1 (Mon Aug 31 2026)
+## v0.16.1 (Mon Aug 31 2026)
 
 :tada: This release contains work from new contributors! :tada:
 
@@ -76,7 +86,7 @@ Thanks for all your work!
 
 ---
 
-# v0.16.0 (Tue May 26 2026)
+## v0.16.0 (Tue May 26 2026)
 
 #### 🚀 Enhancements
 
@@ -101,7 +111,7 @@ Thanks for all your work!
 
 ---
 
-# v0.15.1 (Tue Jan 20 2026)
+## v0.15.1 (Tue Jan 20 2026)
 
 #### 🐛 Bug Fixes
 
@@ -113,7 +123,7 @@ Thanks for all your work!
 
 ---
 
-# v0.15.0 (Thu Jan 15 2026)
+## v0.15.0 (Thu Jan 15 2026)
 
 #### 💥 Breaking Changes
 
@@ -134,7 +144,7 @@ Thanks for all your work!
 
 ---
 
-# v0.14.0 (Thu Dec 11 2025)
+## v0.14.0 (Thu Dec 11 2025)
 
 #### 💥 Breaking Changes
 
@@ -151,7 +161,7 @@ Thanks for all your work!
 
 ---
 
-# v0.13.3 (Tue Nov 25 2025)
+## v0.13.3 (Tue Nov 25 2025)
 
 #### 🏠 Internal
 
@@ -163,7 +173,7 @@ Thanks for all your work!
 
 ---
 
-# v0.13.2 (Wed Nov 12 2025)
+## v0.13.2 (Wed Nov 12 2025)
 
 #### 🚀 Enhancements
 
@@ -175,7 +185,7 @@ Thanks for all your work!
 
 ---
 
-# v0.13.1 (Sun Nov 09 2025)
+## v0.13.1 (Sun Nov 09 2025)
 
 #### 🏠 Internal
 
@@ -188,7 +198,7 @@ Thanks for all your work!
 
 ---
 
-# v0.13.1 (Sat Nov 08 2025)
+## v0.13.1 (Sat Nov 08 2025)
 
 #### 🏠 Internal
 
@@ -200,7 +210,7 @@ Thanks for all your work!
 
 ---
 
-# v0.13.0 (Mon Nov 03 2025)
+## v0.13.0 (Mon Nov 03 2025)
 
 #### 🚀 Enhancements
 
@@ -219,7 +229,7 @@ Thanks for all your work!
 
 ---
 
-# v0.12.0 (Thu Oct 16 2025)
+## v0.12.0 (Thu Oct 16 2025)
 
 #### 🚀 Enhancements
 
@@ -236,7 +246,7 @@ Thanks for all your work!
 
 ---
 
-# v0.11.1 (Thu Sep 18 2025)
+## v0.11.1 (Thu Sep 18 2025)
 
 #### 🚀 Enhancements
 
@@ -249,7 +259,7 @@ Thanks for all your work!
 
 ---
 
-# v0.11.0 (Wed Aug 06 2025)
+## v0.11.0 (Wed Aug 06 2025)
 
 #### 🚀 Enhancements
 
@@ -272,7 +282,7 @@ Thanks for all your work!
 
 ---
 
-# v0.10.1 (Tue Apr 01 2025)
+## v0.10.1 (Tue Apr 01 2025)
 
 #### 🏠 Internal
 
@@ -284,7 +294,7 @@ Thanks for all your work!
 
 ---
 
-# v0.10.0 (Wed Mar 26 2025)
+## v0.10.0 (Wed Mar 26 2025)
 
 #### 💥 Breaking Changes
 
@@ -315,7 +325,7 @@ Thanks for all your work!
 
 ---
 
-# v0.9.3 (Thu Jan 30 2025)
+## v0.9.3 (Thu Jan 30 2025)
 
 #### 🏠 Internal
 
@@ -328,7 +338,7 @@ Thanks for all your work!
 
 ---
 
-# v0.9.2 (Wed Jan 29 2025)
+## v0.9.2 (Wed Jan 29 2025)
 
 #### 🏠 Internal
 
@@ -340,7 +350,7 @@ Thanks for all your work!
 
 ---
 
-# v0.9.1 (Wed Jan 29 2025)
+## v0.9.1 (Wed Jan 29 2025)
 
 #### 🏠 Internal
 
@@ -353,7 +363,7 @@ Thanks for all your work!
 
 ---
 
-# v0.9.0 (Wed Jan 29 2025)
+## v0.9.0 (Wed Jan 29 2025)
 
 :tada: This release contains work from a new contributor! :tada:
 
@@ -384,7 +394,7 @@ Thank you, Tushar Jamdade ([@Tusharjamdade](https://github.com/Tusharjamdade)), 
 
 ---
 
-# v0.8.1 (Fri Dec 20 2024)
+## v0.8.1 (Fri Dec 20 2024)
 
 #### 🚀 Enhancements
 
@@ -404,7 +414,7 @@ Thank you, Tushar Jamdade ([@Tusharjamdade](https://github.com/Tusharjamdade)), 
 
 ---
 
-# v0.8.0 (Thu Dec 19 2024)
+## v0.8.0 (Thu Dec 19 2024)
 
 #### 🚀 Enhancements
 
@@ -421,7 +431,7 @@ Thank you, Tushar Jamdade ([@Tusharjamdade](https://github.com/Tusharjamdade)), 
 
 ---
 
-# v0.7.2 (Tue Dec 10 2024)
+## v0.7.2 (Tue Dec 10 2024)
 
 #### 🚀 Enhancements
 
@@ -444,7 +454,7 @@ Thank you, Tushar Jamdade ([@Tusharjamdade](https://github.com/Tusharjamdade)), 
 
 ---
 
-# v0.7.1 (Mon Dec 02 2024)
+## v0.7.1 (Mon Dec 02 2024)
 
 #### 🏠 Internal
 
@@ -457,7 +467,7 @@ Thank you, Tushar Jamdade ([@Tusharjamdade](https://github.com/Tusharjamdade)), 
 
 ---
 
-# v0.7.0 (Mon Nov 25 2024)
+## v0.7.0 (Mon Nov 25 2024)
 
 #### 🚀 Enhancements
 
@@ -473,7 +483,7 @@ Thank you, Tushar Jamdade ([@Tusharjamdade](https://github.com/Tusharjamdade)), 
 
 ---
 
-# v0.6.0 (Tue Nov 05 2024)
+## v0.6.0 (Tue Nov 05 2024)
 
 #### 🚀 Enhancements
 
@@ -490,7 +500,7 @@ Thank you, Tushar Jamdade ([@Tusharjamdade](https://github.com/Tusharjamdade)), 
 
 ---
 
-# v0.5.0 (Thu Oct 24 2024)
+## v0.5.0 (Thu Oct 24 2024)
 
 :tada: This release contains work from a new contributor! :tada:
 
@@ -523,7 +533,7 @@ Thank you, Raya Chakravarty ([@Raya679](https://github.com/Raya679)), for all yo
 
 ---
 
-# v0.4.0 (Fri Aug 09 2024)
+## v0.4.0 (Fri Aug 09 2024)
 
 #### 💥 Breaking Changes
 
@@ -539,7 +549,7 @@ Thank you, Raya Chakravarty ([@Raya679](https://github.com/Raya679)), for all yo
 
 ---
 
-# v0.3.0 (Fri Aug 02 2024)
+## v0.3.0 (Fri Aug 02 2024)
 
 #### 💥 Breaking Changes
 
@@ -558,7 +568,7 @@ Thank you, Raya Chakravarty ([@Raya679](https://github.com/Raya679)), for all yo
 
 ---
 
-# v0.2.2 (Fri Apr 19 2024)
+## v0.2.2 (Fri Apr 19 2024)
 
 #### 🐛 Bug Fixes
 
@@ -574,7 +584,7 @@ Thank you, Raya Chakravarty ([@Raya679](https://github.com/Raya679)), for all yo
 
 ---
 
-# v0.2.1 (Mon Apr 15 2024)
+## v0.2.1 (Mon Apr 15 2024)
 
 :tada: This release contains work from a new contributor! :tada:
 
@@ -597,7 +607,7 @@ Thank you, Alyssa Dai ([@alyssadai](https://github.com/alyssadai)), for all your
 
 ---
 
-# v0.2.0 (Thu Apr 11 2024)
+## v0.2.0 (Thu Apr 11 2024)
 
 :tada: This release contains work from new contributors! :tada:
 
@@ -651,7 +661,7 @@ We have updated the Neurobagel data model to allow users to specify phenotypic i
 
 ---
 
-# v0.1.0 (Thu Mar 07 2024)
+## v0.1.0 (Thu Mar 07 2024)
 
 :tada: This release contains work from new contributors! :tada:
 
