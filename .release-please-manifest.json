@@ -1,7 +1,7 @@
 {
   "recipes": "0.9.2",
-  "tools/api": "0.12.0",
+  "tools/api": "0.13.0",
   "tools/federation-api": "0.10.0",
-  "tools/query-tool": "0.17.2",
-  "tools/configure-nb": "0.2.1"
+  "tools/query-tool": "0.18.0",
+  "tools/configure-nb": "0.3.0"
 }

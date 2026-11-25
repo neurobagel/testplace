@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.0](https://github.com/neurobagel/testplace/compare/configure-nb-v0.2.1...configure-nb-v0.3.0) (2026-11-25)
+
+
+### ⚠ BREAKING CHANGES
+
+* a breaking comment ([#30](https://github.com/neurobagel/testplace/issues/30))
+
+### 🚀 Enhancements
+
+* a breaking comment ([#30](https://github.com/neurobagel/testplace/issues/30)) ([4a26041](https://github.com/neurobagel/testplace/commit/4a2604156985bdb36d2804f948f50c83bbf5ef28))
+
 ## [0.2.1](https://github.com/neurobagel/testplace/compare/configure-nb-v0.2.0...configure-nb-v0.2.1) (2026-11-24)
 
 

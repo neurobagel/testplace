@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.18.0](https://github.com/neurobagel/testplace/compare/query-tool-v0.17.2...query-tool-v0.18.0) (2026-11-25)
+
+
+### ⚠ BREAKING CHANGES
+
+* a breaking comment ([#30](https://github.com/neurobagel/testplace/issues/30))
+
+### 🚀 Enhancements
+
+* a breaking comment ([#30](https://github.com/neurobagel/testplace/issues/30)) ([4a26041](https://github.com/neurobagel/testplace/commit/4a2604156985bdb36d2804f948f50c83bbf5ef28))
+
 ## [0.17.2](https://github.com/neurobagel/testplace/compare/query-tool-v0.17.1...query-tool-v0.17.2) (2026-11-24)
 
 

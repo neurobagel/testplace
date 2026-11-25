@@ -1,4 +1,17 @@
-# v0.12.0 (Thu Oct 22 2026)
+# Changelog
+
+## [0.13.0](https://github.com/neurobagel/testplace/compare/api-v0.12.0...api-v0.13.0) (2026-11-25)
+
+
+### ⚠ BREAKING CHANGES
+
+* a breaking comment ([#30](https://github.com/neurobagel/testplace/issues/30))
+
+### 🚀 Enhancements
+
+* a breaking comment ([#30](https://github.com/neurobagel/testplace/issues/30)) ([4a26041](https://github.com/neurobagel/testplace/commit/4a2604156985bdb36d2804f948f50c83bbf5ef28))
+
+## v0.12.0 (Thu Oct 22 2026)
 
 :tada: This release contains work from a new contributor! :tada:
 
@@ -25,7 +38,7 @@ Thank you, Ravi Ranjan ([@AviJxn](https://github.com/AviJxn)), for all your work
 
 ---
 
-# v0.11.0 (Mon Sep 14 2026)
+## v0.11.0 (Mon Sep 14 2026)
 
 :tada: This release contains work from a new contributor! :tada:
 
@@ -55,7 +68,7 @@ Thank you, CHANDAN YADAV ([@NobleCoder69](https://github.com/NobleCoder69)), for
 
 ---
 
-# v0.10.0 (Thu Jun 04 2026)
+## v0.10.0 (Thu Jun 04 2026)
 
 #### 🚀 Enhancements
 
@@ -80,7 +93,7 @@ Thank you, CHANDAN YADAV ([@NobleCoder69](https://github.com/NobleCoder69)), for
 
 ---
 
-# v0.9.2 (Tue Mar 03 2026)
+## v0.9.2 (Tue Mar 03 2026)
 
 :tada: This release contains work from a new contributor! :tada:
 
@@ -96,7 +109,7 @@ Thank you, Sejal ([@sejalpunwatkar](https://github.com/sejalpunwatkar)), for all
 
 ---
 
-# v0.9.1 (Wed Feb 04 2026)
+## v0.9.1 (Wed Feb 04 2026)
 
 #### 🚀 Enhancements
 
@@ -108,7 +121,7 @@ Thank you, Sejal ([@sejalpunwatkar](https://github.com/sejalpunwatkar)), for all
 
 ---
 
-# v0.9.0 (Thu Jan 15 2026)
+## v0.9.0 (Thu Jan 15 2026)
 
 #### 💥 Breaking Changes
 
@@ -120,7 +133,7 @@ Thank you, Sejal ([@sejalpunwatkar](https://github.com/sejalpunwatkar)), for all
 
 ---
 
-# v0.8.0 (Thu Dec 11 2025)
+## v0.8.0 (Thu Dec 11 2025)
 
 #### 🚀 Enhancements
 
@@ -137,7 +150,7 @@ Thank you, Sejal ([@sejalpunwatkar](https://github.com/sejalpunwatkar)), for all
 
 ---
 
-# v0.7.2 (Wed Nov 19 2025)
+## v0.7.2 (Wed Nov 19 2025)
 
 #### 🏎 Performance Improvements
 
@@ -151,7 +164,7 @@ Thank you, Sejal ([@sejalpunwatkar](https://github.com/sejalpunwatkar)), for all
 
 ---
 
-# v0.7.1 (Thu Nov 06 2025)
+## v0.7.1 (Thu Nov 06 2025)
 
 #### 🐛 Bug Fixes
 
@@ -163,7 +176,7 @@ Thank you, Sejal ([@sejalpunwatkar](https://github.com/sejalpunwatkar)), for all
 
 ---
 
-# v0.7.0 (Thu Sep 11 2025)
+## v0.7.0 (Thu Sep 11 2025)
 
 #### 💥 Breaking Changes
 
@@ -182,7 +195,7 @@ Thank you, Sejal ([@sejalpunwatkar](https://github.com/sejalpunwatkar)), for all
 
 ---
 
-# v0.6.4 (Wed Mar 26 2025)
+## v0.6.4 (Wed Mar 26 2025)
 
 #### 🚀 Enhancements
 
@@ -194,7 +207,7 @@ Thank you, Sejal ([@sejalpunwatkar](https://github.com/sejalpunwatkar)), for all
 
 ---
 
-# v0.6.3 (Fri Mar 14 2025)
+## v0.6.3 (Fri Mar 14 2025)
 
 #### 🐛 Bug Fixes
 
@@ -206,7 +219,7 @@ Thank you, Sejal ([@sejalpunwatkar](https://github.com/sejalpunwatkar)), for all
 
 ---
 
-# v0.6.2 (Mon Mar 10 2025)
+## v0.6.2 (Mon Mar 10 2025)
 
 :tada: This release contains work from a new contributor! :tada:
 
@@ -232,7 +245,7 @@ Thank you, Khushi Jitendra Rajurkar ([@KhushiRajurkar](https://github.com/Khushi
 
 ---
 
-# v0.6.1 (Fri Feb 07 2025)
+## v0.6.1 (Fri Feb 07 2025)
 
 #### 🚀 Enhancements
 
@@ -245,7 +258,7 @@ Thank you, Khushi Jitendra Rajurkar ([@KhushiRajurkar](https://github.com/Khushi
 
 ---
 
-# v0.6.0 (Tue Jan 07 2025)
+## v0.6.0 (Tue Jan 07 2025)
 
 #### 💥 Breaking Changes
 
@@ -257,7 +270,7 @@ Thank you, Khushi Jitendra Rajurkar ([@KhushiRajurkar](https://github.com/Khushi
 
 ---
 
-# v0.5.1 (Mon Dec 16 2024)
+## v0.5.1 (Mon Dec 16 2024)
 
 #### 📝 Documentation
 
@@ -269,7 +282,7 @@ Thank you, Khushi Jitendra Rajurkar ([@KhushiRajurkar](https://github.com/Khushi
 
 ---
 
-# v0.5.0 (Mon Dec 16 2024)
+## v0.5.0 (Mon Dec 16 2024)
 
 #### 🚀 Enhancements
 
@@ -285,7 +298,7 @@ Thank you, Khushi Jitendra Rajurkar ([@KhushiRajurkar](https://github.com/Khushi
 
 ---
 
-# v0.4.3 (Mon Dec 02 2024)
+## v0.4.3 (Mon Dec 02 2024)
 
 #### 🏠 Internal
 
@@ -297,7 +310,7 @@ Thank you, Khushi Jitendra Rajurkar ([@KhushiRajurkar](https://github.com/Khushi
 
 ---
 
-# v0.4.2 (Thu Nov 07 2024)
+## v0.4.2 (Thu Nov 07 2024)
 
 #### 🚀 Enhancements
 
@@ -309,7 +322,7 @@ Thank you, Khushi Jitendra Rajurkar ([@KhushiRajurkar](https://github.com/Khushi
 
 ---
 
-# v0.4.1 (Tue Oct 29 2024)
+## v0.4.1 (Tue Oct 29 2024)
 
 #### 🐛 Bug Fixes
 
@@ -325,7 +338,7 @@ Thank you, Khushi Jitendra Rajurkar ([@KhushiRajurkar](https://github.com/Khushi
 
 ---
 
-# v0.4.0 (Thu Oct 24 2024)
+## v0.4.0 (Thu Oct 24 2024)
 
 #### 💥 Breaking Changes
 
@@ -364,7 +377,7 @@ Thank you, Khushi Jitendra Rajurkar ([@KhushiRajurkar](https://github.com/Khushi
 
 ---
 
-# v0.3.1 (Tue Aug 13 2024)
+## v0.3.1 (Tue Aug 13 2024)
 
 #### 🐛 Bug Fixes
 
@@ -380,7 +393,7 @@ Thank you, Khushi Jitendra Rajurkar ([@KhushiRajurkar](https://github.com/Khushi
 
 ---
 
-# v0.3.1 (Tue Aug 13 2024)
+## v0.3.1 (Tue Aug 13 2024)
 
 #### 🐛 Bug Fixes
 
@@ -396,7 +409,7 @@ Thank you, Khushi Jitendra Rajurkar ([@KhushiRajurkar](https://github.com/Khushi
 
 ---
 
-# v0.3.1 (Tue Aug 13 2024)
+## v0.3.1 (Tue Aug 13 2024)
 
 #### 🐛 Bug Fixes
 
@@ -408,7 +421,7 @@ Thank you, Khushi Jitendra Rajurkar ([@KhushiRajurkar](https://github.com/Khushi
 
 ---
 
-# v0.3.0 (Fri Aug 02 2024)
+## v0.3.0 (Fri Aug 02 2024)
 
 #### 💥 Breaking Changes
 
@@ -425,7 +438,7 @@ Thank you, Khushi Jitendra Rajurkar ([@KhushiRajurkar](https://github.com/Khushi
 
 ---
 
-# v0.2.1 (Tue Apr 16 2024)
+## v0.2.1 (Tue Apr 16 2024)
 
 #### 🐛 Bug Fixes
 
@@ -439,7 +452,7 @@ Thank you, Khushi Jitendra Rajurkar ([@KhushiRajurkar](https://github.com/Khushi
 
 ---
 
-# v0.2.0 (Thu Apr 11 2024)
+## v0.2.0 (Thu Apr 11 2024)
 
 :tada: This release contains work from a new contributor! :tada:
 
