@@ -32,6 +32,8 @@ logger = get_logger(__name__)
 
 favicon_url = "https://raw.githubusercontent.com/neurobagel/documentation/main/docs/imgs/logo/neurobagel_favicon.png"
 
+# Some funny comment
+
 
 def fetch_available_community_config_names() -> list[str]:
     """Fetch available Neurobagel community configuration names from the specified URL."""

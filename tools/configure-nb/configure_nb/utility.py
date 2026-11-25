@@ -14,6 +14,7 @@ from .logger import log_error, logger
 from .models import COMPOSE_PROFILE_TO_CLASS_MAP, BaseProfile, Quickstart
 
 
+# And you also get a comment
 def load_ini_as_dict(file_path: Path) -> dict:
     """Read an INI file and return its contents as a nested dictionary."""
     config = configparser.ConfigParser(strict=True)
