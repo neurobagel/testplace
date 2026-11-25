@@ -11,6 +11,8 @@ from typing_extensions import Self
 
 from .logger import logger
 
+# I also want to have a comment here
+
 # INI section names corresponding to each service
 SERVICE_INI_SECTIONS = {
     "node-api": "service:node-api",
